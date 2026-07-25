@@ -42,6 +42,41 @@ async def list_agents(
     return statuses
 
 
+@router.get("/logs", response_model=list[AgentLogResponse])
+async def get_logs(
+    agent_name: Optional[str] = Query(None),
+    meeting_id: Optional[uuid.UUID] = Query(None),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=500),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    query = select(AgentLog).order_by(AgentLog.started_at.desc())
+    if agent_name:
+        query = query.where(AgentLog.agent_name == agent_name)
+    if meeting_id:
+        query = query.where(AgentLog.meeting_id == meeting_id)
+    query = query.offset(skip).limit(limit)
+    rows = (await db.execute(query)).scalars().all()
+    return [AgentLogResponse.model_validate(r) for r in rows]
+
+
+@router.get("/workflows", response_model=list[WorkflowStateResponse])
+async def get_workflows(
+    meeting_id: Optional[uuid.UUID] = Query(None),
+    status: Optional[str] = Query(None),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    query = select(WorkflowState).order_by(WorkflowState.updated_at.desc())
+    if meeting_id:
+        query = query.where(WorkflowState.meeting_id == meeting_id)
+    if status:
+        query = query.where(WorkflowState.status == status)
+    rows = (await db.execute(query)).scalars().all()
+    return [WorkflowStateResponse.model_validate(r) for r in rows]
+
+
 @router.get("/{name}", response_model=AgentStatusResponse)
 async def get_agent(
     name: str,
@@ -82,38 +117,3 @@ async def run_agent(
         "log_id": str(log.id),
         "status": "started"
     }
-
-
-@router.get("/logs", response_model=list[AgentLogResponse])
-async def get_logs(
-    agent_name: Optional[str] = Query(None),
-    meeting_id: Optional[uuid.UUID] = Query(None),
-    skip: int = Query(0, ge=0),
-    limit: int = Query(50, ge=1, le=500),
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    query = select(AgentLog).order_by(AgentLog.started_at.desc())
-    if agent_name:
-        query = query.where(AgentLog.agent_name == agent_name)
-    if meeting_id:
-        query = query.where(AgentLog.meeting_id == meeting_id)
-    query = query.offset(skip).limit(limit)
-    rows = (await db.execute(query)).scalars().all()
-    return [AgentLogResponse.model_validate(r) for r in rows]
-
-
-@router.get("/workflows", response_model=list[WorkflowStateResponse])
-async def get_workflows(
-    meeting_id: Optional[uuid.UUID] = Query(None),
-    status: Optional[str] = Query(None),
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    query = select(WorkflowState).order_by(WorkflowState.updated_at.desc())
-    if meeting_id:
-        query = query.where(WorkflowState.meeting_id == meeting_id)
-    if status:
-        query = query.where(WorkflowState.status == status)
-    rows = (await db.execute(query)).scalars().all()
-    return [WorkflowStateResponse.model_validate(r) for r in rows]

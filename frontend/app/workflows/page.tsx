@@ -3,7 +3,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
-  GitBranch,
   Play,
   Square,
   Brain,
@@ -17,9 +16,6 @@ import {
   Bell,
   ArrowDown,
   Terminal,
-  Sparkles,
-  AlertCircle,
-  Clock,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { GlassCard } from '@/components/ui/glass-card'
@@ -235,7 +231,7 @@ export default function WorkflowsPage() {
               })}
 
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
-                {agents.map((agent, i) => {
+                {agents.map((agent) => {
                   const isActive = running && activeAgentId === agent.id
                   const isCompleted = completedAgents.has(agent.id)
                   const Icon = agent.icon

@@ -45,7 +45,7 @@ export function ProgressBar({
   label,
   className,
   animated = true,
-  gradient = true,
+  gradient: _gradient = true,
 }: ProgressBarProps) {
   const percentage = useMemo(() => {
     const pct = Math.min(100, Math.max(0, (value / max) * 100))

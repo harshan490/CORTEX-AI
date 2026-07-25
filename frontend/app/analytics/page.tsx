@@ -8,7 +8,6 @@ import {
   CheckCircle2,
   TrendingUp,
   TrendingDown,
-  BarChart3,
   AlertTriangle,
 } from 'lucide-react'
 import {
@@ -44,8 +43,6 @@ const itemVariants = {
   hidden: { opacity: 0, y: 20 },
   visible: { opacity: 1, y: 0, transition: { duration: 0.5 } },
 }
-
-const PIE_COLORS = ['#7C3AED', '#3B82F6', '#10B981', '#F59E0B', '#EF4444']
 
 interface CounterProps {
   value: number
@@ -124,12 +121,24 @@ const statusConfig = {
   resolved: { variant: 'success' as const, label: 'Resolved' },
 }
 
-function CustomTooltip({ active, payload, label }: any) {
+interface TooltipEntry {
+  name: string
+  value: number
+  color?: string
+}
+
+interface CustomTooltipProps {
+  active?: boolean
+  payload?: TooltipEntry[]
+  label?: string
+}
+
+function CustomTooltip({ active, payload, label }: CustomTooltipProps) {
   if (!active || !payload?.length) return null
   return (
     <div className="rounded-xl border border-white/10 bg-cortex-dark/95 px-4 py-3 shadow-2xl backdrop-blur-xl">
       <p className="text-xs text-white/50 mb-1">{label}</p>
-      {payload.map((entry: any, i: number) => (
+      {payload.map((entry, i) => (
         <p key={i} className="text-sm font-medium" style={{ color: entry.color || '#fff' }}>
           {entry.name}: {entry.value.toLocaleString()}
         </p>

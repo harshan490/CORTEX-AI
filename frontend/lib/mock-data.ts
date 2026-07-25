@@ -1,4 +1,56 @@
-import { Meeting, ActionItem, Task, Agent, AgentStatus } from './store'
+// Local types for mock data (separate from the main Meeting/Task types in @/types)
+export interface Meeting {
+  id: string
+  title: string
+  date: string
+  duration: number
+  participants: string[]
+  transcript: string
+  summary: string
+  decisions: string[]
+  actionItems: ActionItem[]
+  risks: string[]
+  status: 'completed' | 'in-progress' | 'scheduled' | 'cancelled'
+}
+
+export interface ActionItem {
+  id: string
+  title: string
+  owner: string
+  deadline: string
+  status: 'pending' | 'in-progress' | 'completed'
+  priority: 'critical' | 'high' | 'medium' | 'low'
+  meetingId: string
+}
+
+export interface Task {
+  id: string
+  title: string
+  description: string
+  assignee: string
+  dueDate: string
+  status: 'todo' | 'in-progress' | 'review' | 'done'
+  priority: 'critical' | 'high' | 'medium' | 'low'
+  tags: string[]
+  createdAt: string
+}
+
+export interface Agent {
+  id: string
+  name: string
+  type: string
+  status: 'running' | 'idle' | 'completed' | 'error'
+  lastRun: string
+  confidence: number
+}
+
+export interface AgentStatus {
+  agentId: string
+  status: 'running' | 'idle' | 'completed' | 'error'
+  progress: number
+  message: string
+  startedAt?: string
+}
 
 export interface TeamMember {
   id: string

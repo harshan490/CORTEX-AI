@@ -10,7 +10,7 @@ const inter = Inter({
   display: 'swap',
 })
 
-const plusJakartaSans = Plus_Jakarta_Sans({
+const plusJakarta = Plus_Jakarta_Sans({
   subsets: ['latin'],
   variable: '--font-plus-jakarta',
   display: 'swap',
@@ -19,7 +19,7 @@ const plusJakartaSans = Plus_Jakarta_Sans({
 export const metadata: Metadata = {
   title: 'CORTEX AI - Autonomous AI Chief of Staff',
   description:
-    'Enterprise-grade AI platform that autonomously manages your meetings, tasks, and workflows. Powered by advanced AI agents.',
+    'Enterprise-grade AI platform that autonomously manages your meetings, tasks, and workflows.',
   keywords: ['AI', 'meetings', 'productivity', 'enterprise', 'workflow automation'],
 }
 
@@ -30,20 +30,20 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className="dark">
-      <body className={`${inter.variable} ${plusJakartaSans.variable} font-sans antialiased`}>
+      <body className={`${inter.variable} ${plusJakarta.variable} font-sans antialiased`}>
         <Providers>
           {children}
           <Toaster
             position="bottom-right"
             toastOptions={{
               style: {
-                background: '#0F0F1A',
+                background: '#080816',
                 color: '#fff',
-                border: '1px solid rgba(255,255,255,0.1)',
+                border: '1px solid rgba(255,255,255,0.08)',
                 borderRadius: '12px',
                 backdropFilter: 'blur(20px)',
               },
-              success: { iconTheme: { primary: '#7C3AED', secondary: '#fff' } },
+              success: { iconTheme: { primary: '#7B3EFF', secondary: '#fff' } },
               error: { iconTheme: { primary: '#EF4444', secondary: '#fff' } },
             }}
           />

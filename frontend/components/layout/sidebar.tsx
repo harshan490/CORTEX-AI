@@ -47,11 +47,6 @@ const itemVariants = {
   collapsed: { opacity: 0, x: -20 },
 }
 
-const itemIconVariants = {
-  expanded: { x: 0 },
-  collapsed: { x: 0 },
-}
-
 export function Sidebar() {
   const pathname = usePathname()
   const sidebarOpen = useAppStore((s) => s.sidebarOpen)
@@ -147,7 +142,7 @@ export function Sidebar() {
             />
             <div className="min-w-0">
               <p className="text-sm font-medium text-white truncate">{user.name}</p>
-              <p className="text-xs text-white/40 truncate">{user.role}</p>
+              <p className="text-xs text-white/40 truncate">{user.email}</p>
             </div>
           </motion.div>
         )}

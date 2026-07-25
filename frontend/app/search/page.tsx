@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useMemo, useRef, useEffect } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion } from 'framer-motion'
 import {
   Search,
   X,
@@ -14,17 +14,12 @@ import {
   Filter,
   Star,
   Clock,
-  TrendingUp,
-  Sparkles,
   MessageSquare,
 } from 'lucide-react'
-import { cn, formatDate, formatRelativeTime, truncate } from '@/lib/utils'
+import { cn, formatRelativeTime, truncate } from '@/lib/utils'
 import { GlassCard } from '@/components/ui/glass-card'
 import { Badge } from '@/components/ui/badge'
-import { Input } from '@/components/ui/input'
-import { Button } from '@/components/ui/button'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
-import { mockMeetings, mockTasks } from '@/lib/mock-data'
 
 const recentSearches = [
   'authentication implementation',
@@ -65,13 +60,6 @@ const typeConfig = {
   note: { icon: FileText, label: 'Note', color: 'bg-amber-500/20 text-amber-300 border-amber-500/30' },
 }
 
-const typeColors = {
-  meeting: '#7C3AED',
-  decision: '#10B981',
-  task: '#3B82F6',
-  note: '#F59E0B',
-}
-
 function highlightMatch(text: string, query: string) {
   if (!query.trim()) return text
   const regex = new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi')
@@ -97,7 +85,6 @@ const resultVariants = {
 
 export default function SearchPage() {
   const [query, setQuery] = useState('')
-  const [showFilters, setShowFilters] = useState(false)
   const [filterType, setFilterType] = useState<string[]>([])
   const [results, setResults] = useState<SearchResult[]>([])
   const [isSearching, setIsSearching] = useState(false)

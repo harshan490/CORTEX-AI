@@ -1,68 +1,66 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   ArrowLeft,
   Clock,
   Calendar,
   Users,
-  Mic,
   FileText,
   ListChecks,
   GitBranch,
   Brain,
-  MessageSquare,
   AlertTriangle,
-  Sparkles,
   Activity,
   BarChart3,
-  Play,
-  Square,
+  CheckCircle,
+  XCircle,
+  HelpCircle,
 } from 'lucide-react'
-import { cn, formatDate, formatRelativeTime } from '@/lib/utils'
+import { cn, formatDate } from '@/lib/utils'
 import { GlassCard } from '@/components/ui/glass-card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { ProgressBar } from '@/components/ui/progress-bar'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
-import { mockMeetings } from '@/lib/mock-data'
+import { api } from '@/lib/api'
+import type { MeetingStatus, Decision, ActionItem, Risk, Clarification, TranscriptSegment } from '@/types'
 
-type TabId = 'transcript' | 'summary' | 'actions' | 'decisions' | 'timeline'
+type TabId = 'transcript' | 'summary' | 'actions' | 'decisions' | 'risks'
 
-interface Tab {
-  id: TabId
-  label: string
-  icon: typeof FileText
-}
-
-const tabs: Tab[] = [
+const tabs: { id: TabId; label: string; icon: typeof FileText }[] = [
   { id: 'transcript', label: 'Transcript', icon: FileText },
   { id: 'summary', label: 'Summary', icon: Brain },
   { id: 'actions', label: 'Action Items', icon: ListChecks },
   { id: 'decisions', label: 'Decisions', icon: GitBranch },
-  { id: 'timeline', label: 'Timeline', icon: Activity },
+  { id: 'risks', label: 'Risks', icon: AlertTriangle },
 ]
 
-const statusConfig = {
-  completed: { variant: 'success' as const, label: 'Completed' },
-  'in-progress': { variant: 'warning' as const, label: 'In Progress' },
-  scheduled: { variant: 'info' as const, label: 'Scheduled' },
-  cancelled: { variant: 'danger' as const, label: 'Cancelled' },
+const statusConfig: Record<MeetingStatus, { variant: 'success' | 'warning' | 'info' | 'danger' | 'default'; label: string }> = {
+  approved: { variant: 'success', label: 'Approved' },
+  awaiting_review: { variant: 'warning', label: 'Awaiting Review' },
+  processing: { variant: 'info', label: 'Processing' },
+  rejected: { variant: 'danger', label: 'Rejected' },
+  archived: { variant: 'default', label: 'Archived' },
 }
 
-const priorityConfig = {
-  critical: { variant: 'danger' as const, label: 'Critical' },
-  high: { variant: 'warning' as const, label: 'High' },
-  medium: { variant: 'default' as const, label: 'Medium' },
-  low: { variant: 'info' as const, label: 'Low' },
+const priorityVariant = {
+  critical: 'danger' as const,
+  high: 'warning' as const,
+  medium: 'default' as const,
+  low: 'info' as const,
 }
 
-const actionStatusConfig = {
-  pending: { variant: 'default' as const, label: 'Pending' },
-  'in-progress': { variant: 'warning' as const, label: 'In Progress' },
-  completed: { variant: 'success' as const, label: 'Completed' },
+const taskStatusVariant = {
+  pending: 'default' as const,
+  in_progress: 'warning' as const,
+  blocked: 'danger' as const,
+  overdue: 'danger' as const,
+  escalated: 'danger' as const,
+  completed: 'success' as const,
 }
 
 const speakerColors = [
@@ -74,34 +72,6 @@ const speakerColors = [
   'text-cyan-400',
 ]
 
-const mockTranscriptLines = [
-  { speaker: 'Alice Chen', text: 'Welcome everyone to the Q4 product strategy review. Let\'s start with the agenda.', time: '0:00', speakerIndex: 0 },
-  { speaker: 'Bob Martinez', text: 'I\'ve prepared the engineering capacity analysis for Q4.', time: '0:15', speakerIndex: 1 },
-  { speaker: 'Alice Chen', text: 'Great, let\'s review that first. What does the data show?', time: '0:28', speakerIndex: 0 },
-  { speaker: 'Bob Martinez', text: 'We have about 480 engineering hours available. The AI Analytics module will need roughly 200 hours.', time: '0:45', speakerIndex: 1 },
-  { speaker: 'Carol Williams', text: 'From the product side, we\'re seeing strong demand for the AI features from enterprise clients.', time: '1:20', speakerIndex: 2 },
-  { speaker: 'Alice Chen', text: 'Let\'s lock in the AI Analytics module for October launch.', time: '2:00', speakerIndex: 0 },
-  { speaker: 'Dave Thompson', text: 'Infrastructure-wise, we can support the new module. We\'ll need to scale our GPU cluster.', time: '2:30', speakerIndex: 3 },
-  { speaker: 'Bob Martinez', text: 'The enterprise SSO integration is also high priority. Several prospects are blocked on this.', time: '3:15', speakerIndex: 1 },
-  { speaker: 'Alice Chen', text: 'OK, let\'s prioritize both. AI Analytics for October, SSO by November 15.', time: '3:45', speakerIndex: 0 },
-  { speaker: 'Carol Williams', text: 'About the mobile SDK - should we reconsider the timeline?', time: '4:20', speakerIndex: 2 },
-  { speaker: 'Alice Chen', text: 'Given our capacity, I think we need to push mobile to Q1 2027. Agreed?', time: '4:50', speakerIndex: 0 },
-  { speaker: 'Bob Martinez', text: 'That makes sense. We don\'t have the bandwidth right now.', time: '5:15', speakerIndex: 1 },
-  { speaker: 'Alice Chen', text: 'Decision made. Mobile SDK moves to Q1 2027. Now let\'s talk about hiring.', time: '5:30', speakerIndex: 0 },
-]
-
-const mockTimelineEntries = [
-  { time: '0:00', event: 'Meeting started', type: 'start' as const, icon: Play },
-  { time: '0:15', event: 'Engineering capacity review began', type: 'milestone' as const, icon: Activity },
-  { time: '2:00', event: 'Decision: AI Analytics module approved for October', type: 'decision' as const, icon: GitBranch },
-  { time: '3:45', event: 'Decision: Enterprise SSO by November 15', type: 'decision' as const, icon: GitBranch },
-  { time: '4:50', event: 'Discussion: Mobile SDK timeline', type: 'discussion' as const, icon: MessageSquare },
-  { time: '5:30', event: 'Decision: Mobile SDK postponed to Q1 2027', type: 'decision' as const, icon: GitBranch },
-  { time: '5:45', event: 'Task created: Draft AI Analytics spec (assigned to Alice)', type: 'task' as const, icon: ListChecks },
-  { time: '6:30', event: 'Task created: Enterprise SSO vendor evaluation (assigned to Bob)', type: 'task' as const, icon: ListChecks },
-  { time: '7:00', event: 'Task created: Prepare hiring plan (assigned to Carol)', type: 'task' as const, icon: ListChecks },
-]
-
 const pageTransition = {
   initial: { opacity: 0, x: 20 },
   animate: { opacity: 1, x: 0, transition: { duration: 0.3 } },
@@ -111,21 +81,60 @@ const pageTransition = {
 export default function MeetingDetailPage() {
   const params = useParams()
   const router = useRouter()
-  const [activeTab, setActiveTab] = useState<TabId>('transcript')
-  const [isLiveTranscription, setIsLiveTranscription] = useState(false)
+  const queryClient = useQueryClient()
+  const meetingId = params.id as string
+  const [activeTab, setActiveTab] = useState<TabId>('summary')
 
-  const meeting = useMemo(
-    () => mockMeetings.find((m) => m.id === params.id),
-    [params.id]
-  )
+  const { data: meeting, isLoading, error } = useQuery({
+    queryKey: ['meeting', meetingId],
+    queryFn: () => api.getMeeting(meetingId),
+    staleTime: 30_000,
+  })
 
-  if (!meeting) {
+  const approveMutation = useMutation({
+    mutationFn: () => api.approveMeeting(meetingId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['meeting', meetingId] })
+      queryClient.invalidateQueries({ queryKey: ['meetings'] })
+    },
+  })
+
+  const rejectMutation = useMutation({
+    mutationFn: () => api.rejectMeeting(meetingId, 'Rejected by reviewer'),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['meeting', meetingId] })
+      queryClient.invalidateQueries({ queryKey: ['meetings'] })
+    },
+  })
+
+  // Build a speaker index map for consistent colors
+  const speakerIndex = new Map<string, number>()
+  meeting?.transcript.forEach((seg) => {
+    if (!speakerIndex.has(seg.speaker)) {
+      speakerIndex.set(seg.speaker, speakerIndex.size)
+    }
+  })
+
+  if (isLoading) {
+    return (
+      <DashboardLayout title="Loading...">
+        <div className="animate-pulse space-y-6">
+          <div className="h-10 w-64 rounded bg-white/10" />
+          <div className="h-64 rounded-2xl bg-white/5" />
+        </div>
+      </DashboardLayout>
+    )
+  }
+
+  if (error || !meeting) {
     return (
       <DashboardLayout title="Meeting Not Found">
         <div className="flex flex-col items-center justify-center py-20">
           <AlertTriangle className="h-16 w-16 text-amber-400/50 mb-4" />
           <h2 className="text-xl font-semibold text-white mb-2">Meeting not found</h2>
-          <p className="text-white/50 text-sm mb-6">The meeting you&apos;re looking for doesn&apos;t exist.</p>
+          <p className="text-white/50 text-sm mb-6">
+            {error instanceof Error ? error.message : "The meeting you're looking for doesn't exist."}
+          </p>
           <Button variant="outline" leftIcon={<ArrowLeft className="h-4 w-4" />} onClick={() => router.push('/meetings')}>
             Back to Meetings
           </Button>
@@ -134,7 +143,11 @@ export default function MeetingDetailPage() {
     )
   }
 
-  const config = statusConfig[meeting.status]
+  const config = statusConfig[meeting.status] ?? statusConfig.archived
+  const completedTasks = meeting.actionItems.filter((t) => t.status === 'completed').length
+  const completionPct = meeting.actionItems.length > 0
+    ? Math.round((completedTasks / meeting.actionItems.length) * 100)
+    : 0
 
   return (
     <DashboardLayout title={meeting.title}>
@@ -153,35 +166,49 @@ export default function MeetingDetailPage() {
           <div className="flex-1">
             <div className="flex items-center gap-3">
               <h1 className="text-xl font-bold text-white">{meeting.title}</h1>
-              <Badge variant={config.variant} size="md" dot={meeting.status === 'in-progress'}>
+              <Badge variant={config.variant} size="md" dot={meeting.status === 'processing'}>
                 {config.label}
               </Badge>
             </div>
             <div className="flex items-center gap-4 mt-1.5 text-sm text-white/40">
               <span className="flex items-center gap-1.5">
                 <Calendar className="h-4 w-4" />
-                {formatDate(meeting.date, 'MMM d, yyyy')}
-              </span>
-              <span className="flex items-center gap-1.5">
-                <Clock className="h-4 w-4" />
-                {Math.floor(meeting.duration / 60)} min
+                {formatDate(meeting.createdAt, 'MMM d, yyyy')}
               </span>
               <span className="flex items-center gap-1.5">
                 <Users className="h-4 w-4" />
                 {meeting.participants.length} participants
               </span>
+              {meeting.processingConfidence != null && (
+                <span className="flex items-center gap-1.5">
+                  <Brain className="h-4 w-4" />
+                  {Math.round(meeting.processingConfidence * 100)}% confidence
+                </span>
+              )}
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <Button
-              variant={isLiveTranscription ? 'danger' : 'secondary'}
-              size="sm"
-              leftIcon={isLiveTranscription ? <Square className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
-              onClick={() => setIsLiveTranscription(!isLiveTranscription)}
-            >
-              {isLiveTranscription ? 'Stop Demo' : 'Live Demo'}
-            </Button>
-          </div>
+          {meeting.status === 'awaiting_review' && (
+            <div className="flex items-center gap-2">
+              <Button
+                variant="secondary"
+                size="sm"
+                leftIcon={<XCircle className="h-4 w-4" />}
+                loading={rejectMutation.isPending}
+                onClick={() => rejectMutation.mutate()}
+              >
+                Reject
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                leftIcon={<CheckCircle className="h-4 w-4" />}
+                loading={approveMutation.isPending}
+                onClick={() => approveMutation.mutate()}
+              >
+                Approve
+              </Button>
+            </div>
+          )}
         </motion.div>
 
         <div className="flex items-center gap-1 border-b border-white/10 overflow-x-auto scrollbar-hidden">
@@ -199,6 +226,9 @@ export default function MeetingDetailPage() {
               >
                 <Icon className="h-4 w-4" />
                 {tab.label}
+                {tab.id === 'actions' && meeting.actionItems.length > 0 && (
+                  <span className="ml-1 text-xs text-white/30">({meeting.actionItems.length})</span>
+                )}
                 {isActive && (
                   <motion.div
                     layoutId="tab-indicator"
@@ -218,39 +248,36 @@ export default function MeetingDetailPage() {
                   <GlassCard>
                     <div className="flex items-center justify-between mb-4">
                       <h3 className="text-lg font-semibold text-white">Transcript</h3>
-                      {isLiveTranscription && (
-                        <Badge variant="danger" size="sm" dot pulse>
-                          Recording
-                        </Badge>
-                      )}
+                      <Badge variant="default" size="sm">{meeting.transcript.length} segments</Badge>
                     </div>
-                    <div className="space-y-4 max-h-[600px] overflow-y-auto scrollbar-thin pr-2">
-                      {mockTranscriptLines.map((line, i) => (
-                        <motion.div
-                          key={i}
-                          initial={{ opacity: 0, x: -10 }}
-                          animate={{ opacity: 1, x: 0 }}
-                          transition={{ delay: i * 0.05 }}
-                          className="flex gap-3"
-                        >
-                          <span className="text-xs text-white/20 w-10 shrink-0 pt-0.5 text-right font-mono">
-                            {line.time}
-                          </span>
-                          <div className="flex-1">
-                            <span className={cn('text-sm font-semibold', speakerColors[line.speakerIndex % speakerColors.length])}>
-                              {line.speaker}
-                            </span>
-                            <p className="text-sm text-white/80 mt-0.5 leading-relaxed">{line.text}</p>
-                          </div>
-                        </motion.div>
-                      ))}
-                      {isLiveTranscription && (
-                        <div className="flex items-center gap-2 text-white/30 text-sm animate-pulse">
-                          <span className="h-2 w-2 rounded-full bg-red-400" />
-                          Listening...
-                        </div>
-                      )}
-                    </div>
+                    {meeting.transcript.length === 0 ? (
+                      <p className="text-white/40 text-sm py-8 text-center">No transcript available.</p>
+                    ) : (
+                      <div className="space-y-4 max-h-[600px] overflow-y-auto scrollbar-thin pr-2">
+                        {meeting.transcript.map((seg: TranscriptSegment, i: number) => {
+                          const idx = speakerIndex.get(seg.speaker) ?? i
+                          return (
+                            <motion.div
+                              key={seg.id}
+                              initial={{ opacity: 0, x: -10 }}
+                              animate={{ opacity: 1, x: 0 }}
+                              transition={{ delay: i * 0.02 }}
+                              className="flex gap-3"
+                            >
+                              <span className="text-xs text-white/20 w-14 shrink-0 pt-0.5 text-right font-mono">
+                                {Math.floor(seg.startTime / 60)}:{String(Math.floor(seg.startTime % 60)).padStart(2, '0')}
+                              </span>
+                              <div className="flex-1">
+                                <span className={cn('text-sm font-semibold', speakerColors[idx % speakerColors.length])}>
+                                  {seg.speaker}
+                                </span>
+                                <p className="text-sm text-white/80 mt-0.5 leading-relaxed">{seg.text}</p>
+                              </div>
+                            </motion.div>
+                          )
+                        })}
+                      </div>
+                    )}
                   </GlassCard>
                 </motion.div>
               )}
@@ -263,42 +290,44 @@ export default function MeetingDetailPage() {
                       <Badge variant="success" size="sm" dot>AI Generated</Badge>
                     </div>
                     <div className="space-y-6">
-                      <div>
-                        <h4 className="text-sm font-semibold text-purple-400 mb-2 flex items-center gap-2">
-                          <Brain className="h-4 w-4" />
-                          Overview
-                        </h4>
-                        <p className="text-sm text-white/70 leading-relaxed">{meeting.summary}</p>
-                      </div>
-
-                      <div>
-                        <h4 className="text-sm font-semibold text-emerald-400 mb-3 flex items-center gap-2">
-                          <GitBranch className="h-4 w-4" />
-                          Key Decisions
-                        </h4>
-                        <div className="space-y-2">
-                          {meeting.decisions.map((decision, i) => (
-                            <div key={i} className="flex items-start gap-3 rounded-lg border border-emerald-500/10 bg-emerald-500/5 p-3">
-                              <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-500/20">
-                                <div className="h-2 w-2 rounded-full bg-emerald-400" />
-                              </div>
-                              <p className="text-sm text-white/80">{decision}</p>
-                            </div>
-                          ))}
+                      {meeting.executiveSummary && (
+                        <div>
+                          <h4 className="text-sm font-semibold text-purple-400 mb-2 flex items-center gap-2">
+                            <Brain className="h-4 w-4" />
+                            Overview
+                          </h4>
+                          <p className="text-sm text-white/70 leading-relaxed">{meeting.executiveSummary}</p>
                         </div>
-                      </div>
+                      )}
 
-                      {meeting.risks.length > 0 && (
+                      {meeting.topics.length > 0 && (
+                        <div>
+                          <h4 className="text-sm font-semibold text-blue-400 mb-3 flex items-center gap-2">
+                            <Activity className="h-4 w-4" />
+                            Topics Discussed
+                          </h4>
+                          <div className="space-y-3">
+                            {meeting.topics.map((topic) => (
+                              <div key={topic.id} className="rounded-lg border border-blue-500/10 bg-blue-500/5 p-3">
+                                <p className="text-sm font-medium text-white">{topic.title}</p>
+                                <p className="text-xs text-white/60 mt-1">{topic.summary}</p>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {meeting.clarifications.filter(c => c.status === 'pending').length > 0 && (
                         <div>
                           <h4 className="text-sm font-semibold text-amber-400 mb-3 flex items-center gap-2">
-                            <AlertTriangle className="h-4 w-4" />
-                            Risks & Concerns
+                            <HelpCircle className="h-4 w-4" />
+                            Open Questions
                           </h4>
                           <div className="space-y-2">
-                            {meeting.risks.map((risk, i) => (
-                              <div key={i} className="flex items-start gap-3 rounded-lg border border-amber-500/10 bg-amber-500/5 p-3">
-                                <AlertTriangle className="h-5 w-5 text-amber-400 shrink-0 mt-0.5" />
-                                <p className="text-sm text-white/80">{risk}</p>
+                            {meeting.clarifications.filter(c => c.status === 'pending').map((c: Clarification) => (
+                              <div key={c.id} className="flex items-start gap-3 rounded-lg border border-amber-500/10 bg-amber-500/5 p-3">
+                                <HelpCircle className="h-4 w-4 text-amber-400 shrink-0 mt-0.5" />
+                                <p className="text-sm text-white/80">{c.question}</p>
                               </div>
                             ))}
                           </div>
@@ -316,22 +345,22 @@ export default function MeetingDetailPage() {
                       <h3 className="text-lg font-semibold text-white">Action Items</h3>
                       <Badge variant="default" size="sm">{meeting.actionItems.length} items</Badge>
                     </div>
-                    <div className="overflow-x-auto">
-                      <table className="w-full">
-                        <thead>
-                          <tr className="border-b border-white/5">
-                            <th className="text-left text-xs font-medium text-white/40 px-3 py-2">Task</th>
-                            <th className="text-left text-xs font-medium text-white/40 px-3 py-2">Owner</th>
-                            <th className="text-left text-xs font-medium text-white/40 px-3 py-2">Deadline</th>
-                            <th className="text-left text-xs font-medium text-white/40 px-3 py-2">Priority</th>
-                            <th className="text-left text-xs font-medium text-white/40 px-3 py-2">Status</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {meeting.actionItems.map((item) => {
-                            const priorityConf = priorityConfig[item.priority]
-                            const statusConf = actionStatusConfig[item.status]
-                            return (
+                    {meeting.actionItems.length === 0 ? (
+                      <p className="text-white/40 text-sm py-8 text-center">No action items extracted.</p>
+                    ) : (
+                      <div className="overflow-x-auto">
+                        <table className="w-full">
+                          <thead>
+                            <tr className="border-b border-white/5">
+                              <th className="text-left text-xs font-medium text-white/40 px-3 py-2">Task</th>
+                              <th className="text-left text-xs font-medium text-white/40 px-3 py-2">Owner</th>
+                              <th className="text-left text-xs font-medium text-white/40 px-3 py-2">Deadline</th>
+                              <th className="text-left text-xs font-medium text-white/40 px-3 py-2">Priority</th>
+                              <th className="text-left text-xs font-medium text-white/40 px-3 py-2">Status</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {meeting.actionItems.map((item: ActionItem) => (
                               <motion.tr
                                 key={item.id}
                                 initial={{ opacity: 0 }}
@@ -340,25 +369,38 @@ export default function MeetingDetailPage() {
                               >
                                 <td className="px-3 py-3">
                                   <p className="text-sm text-white font-medium">{item.title}</p>
+                                  {item.description && (
+                                    <p className="text-xs text-white/40 mt-0.5 line-clamp-1">{item.description}</p>
+                                  )}
                                 </td>
                                 <td className="px-3 py-3">
-                                  <span className="text-sm text-white/60">{item.owner}</span>
+                                  <span className="text-sm text-white/60">{item.owner ?? '—'}</span>
                                 </td>
                                 <td className="px-3 py-3">
-                                  <span className="text-sm text-white/60">{formatDate(item.deadline, 'MMM d')}</span>
+                                  <span className="text-sm text-white/60">
+                                    {item.deadline ? formatDate(item.deadline, 'MMM d') : '—'}
+                                  </span>
                                 </td>
                                 <td className="px-3 py-3">
-                                  <Badge variant={priorityConf.variant} size="sm">{priorityConf.label}</Badge>
+                                  <Badge variant={priorityVariant[item.priority]} size="sm">
+                                    {item.priority}
+                                  </Badge>
                                 </td>
                                 <td className="px-3 py-3">
-                                  <Badge variant={statusConf.variant} size="sm" dot={item.status === 'in-progress'}>{statusConf.label}</Badge>
+                                  <Badge
+                                    variant={taskStatusVariant[item.status]}
+                                    size="sm"
+                                    dot={item.status === 'in_progress'}
+                                  >
+                                    {item.status.replace('_', ' ')}
+                                  </Badge>
                                 </td>
                               </motion.tr>
-                            )
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
                   </GlassCard>
                 </motion.div>
               )}
@@ -370,66 +412,81 @@ export default function MeetingDetailPage() {
                       <h3 className="text-lg font-semibold text-white">Decisions Made</h3>
                       <Badge variant="success" size="sm">{meeting.decisions.length} decisions</Badge>
                     </div>
-                    <div className="space-y-3">
-                      {meeting.decisions.map((decision, i) => (
-                        <motion.div
-                          key={i}
-                          initial={{ opacity: 0, y: 10 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          transition={{ delay: i * 0.1 }}
-                          className="flex items-start gap-4 rounded-xl border border-emerald-500/10 bg-emerald-500/[0.03] p-4"
-                        >
-                          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-emerald-500/20">
-                            <GitBranch className="h-4 w-4 text-emerald-400" />
-                          </div>
-                          <div>
-                            <p className="text-sm text-white/90">{decision}</p>
-                            <p className="text-xs text-white/30 mt-1">
-                              Decided during &ldquo;{meeting.title}&rdquo;
-                            </p>
-                          </div>
-                        </motion.div>
-                      ))}
-                    </div>
+                    {meeting.decisions.length === 0 ? (
+                      <p className="text-white/40 text-sm py-8 text-center">No decisions recorded.</p>
+                    ) : (
+                      <div className="space-y-3">
+                        {meeting.decisions.map((decision: Decision, i: number) => (
+                          <motion.div
+                            key={decision.id}
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ delay: i * 0.08 }}
+                            className="flex items-start gap-4 rounded-xl border border-emerald-500/10 bg-emerald-500/[0.03] p-4"
+                          >
+                            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-emerald-500/20">
+                              <GitBranch className="h-4 w-4 text-emerald-400" />
+                            </div>
+                            <div>
+                              <p className="text-sm font-medium text-white">{decision.title}</p>
+                              <p className="text-xs text-white/60 mt-1">{decision.description}</p>
+                              {decision.decidedBy.length > 0 && (
+                                <p className="text-xs text-white/30 mt-1">
+                                  By: {decision.decidedBy.join(', ')}
+                                </p>
+                              )}
+                            </div>
+                          </motion.div>
+                        ))}
+                      </div>
+                    )}
                   </GlassCard>
                 </motion.div>
               )}
 
-              {activeTab === 'timeline' && (
-                <motion.div key="timeline" {...pageTransition}>
+              {activeTab === 'risks' && (
+                <motion.div key="risks" {...pageTransition}>
                   <GlassCard>
-                    <div className="flex items-center justify-between mb-6">
-                      <h3 className="text-lg font-semibold text-white">Meeting Timeline</h3>
-                      <Badge variant="info" size="sm">{mockTimelineEntries.length} events</Badge>
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-lg font-semibold text-white">Risks & Concerns</h3>
+                      <Badge variant="warning" size="sm">{meeting.risks.length} risks</Badge>
                     </div>
-                    <div className="space-y-0">
-                      {mockTimelineEntries.map((entry, i) => {
-                        const typeColors = {
-                          start: 'border-purple-500 bg-purple-500/20 text-purple-400',
-                          decision: 'border-emerald-500 bg-emerald-500/20 text-emerald-400',
-                          milestone: 'border-blue-500 bg-blue-500/20 text-blue-400',
-                          task: 'border-amber-500 bg-amber-500/20 text-amber-400',
-                          discussion: 'border-pink-500 bg-pink-500/20 text-pink-400',
-                        }
-                        const color = typeColors[entry.type]
-                        return (
-                          <div key={i} className="relative flex gap-4 pb-8 last:pb-0">
-                            {i < mockTimelineEntries.length - 1 && (
-                              <div className="absolute left-[19px] top-10 bottom-0 w-px bg-white/5" />
-                            )}
-                            <div className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-full border-2', color)}>
-                              <entry.icon className="h-4 w-4" />
+                    {meeting.risks.length === 0 ? (
+                      <p className="text-white/40 text-sm py-8 text-center">No risks identified.</p>
+                    ) : (
+                      <div className="space-y-3">
+                        {meeting.risks.map((risk: Risk, i: number) => (
+                          <motion.div
+                            key={risk.id}
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ delay: i * 0.08 }}
+                            className="flex items-start gap-4 rounded-xl border border-amber-500/10 bg-amber-500/[0.03] p-4"
+                          >
+                            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-amber-500/20">
+                              <AlertTriangle className="h-4 w-4 text-amber-400" />
                             </div>
-                            <div className="flex-1 pt-2">
+                            <div className="flex-1">
                               <div className="flex items-center gap-2">
-                                <p className="text-sm font-medium text-white">{entry.event}</p>
+                                <p className="text-sm font-medium text-white">{risk.title}</p>
+                                <Badge
+                                  variant={risk.severity === 'critical' || risk.severity === 'high' ? 'danger' : 'warning'}
+                                  size="sm"
+                                >
+                                  {risk.severity}
+                                </Badge>
                               </div>
-                              <span className="text-xs text-white/30 mt-1 block">at {entry.time}</span>
+                              <p className="text-xs text-white/60 mt-1">{risk.description}</p>
+                              {risk.mitigation && (
+                                <p className="text-xs text-emerald-400 mt-1.5">
+                                  Mitigation: {risk.mitigation}
+                                </p>
+                              )}
                             </div>
-                          </div>
-                        )
-                      })}
-                    </div>
+                          </motion.div>
+                        ))}
+                      </div>
+                    )}
                   </GlassCard>
                 </motion.div>
               )}
@@ -439,68 +496,10 @@ export default function MeetingDetailPage() {
           <div className="xl:col-span-1 space-y-4">
             <GlassCard>
               <div className="flex items-center gap-2 mb-4">
-                <Brain className="h-5 w-5 text-purple-400" />
-                <h3 className="text-sm font-semibold text-white">AI Insights</h3>
-              </div>
-              <div className="space-y-4">
-                <div>
-                  <div className="flex items-center justify-between text-xs mb-1.5">
-                    <span className="text-white/50">Speaking Time</span>
-                    <span className="text-white/70">Alice (42%)</span>
-                  </div>
-                  <ProgressBar value={42} variant="default" size="sm" />
-                  <div className="flex items-center justify-between text-xs mt-1">
-                    <span className="text-white/30">Bob (28%)</span>
-                    <span className="text-white/30">Carol (18%)</span>
-                    <span className="text-white/30">Dave (12%)</span>
-                  </div>
-                </div>
-
-                <div className="border-t border-white/5 pt-4">
-                  <h4 className="text-xs font-medium text-white/50 mb-2">Top Topics</h4>
-                  <div className="flex flex-wrap gap-1.5">
-                    {['AI Analytics', 'Enterprise SSO', 'Mobile SDK', 'Hiring', 'Q4 Roadmap'].map((topic) => (
-                      <Badge key={topic} variant="default" size="sm">{topic}</Badge>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="border-t border-white/5 pt-4">
-                  <h4 className="text-xs font-medium text-white/50 mb-2">Sentiment</h4>
-                  <div className="flex items-center gap-2">
-                    <div className="flex-1 h-2 rounded-full bg-gradient-to-r from-red-500/30 via-amber-500/30 to-emerald-500/30 relative">
-                      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-3 w-3 rounded-full bg-emerald-400 border-2 border-cortex-darker" />
-                    </div>
-                  </div>
-                  <div className="flex justify-between text-xs text-white/30 mt-1">
-                    <span>Negative</span>
-                    <span className="text-emerald-400 font-medium">Positive</span>
-                  </div>
-                </div>
-
-                <div className="border-t border-white/5 pt-4">
-                  <h4 className="text-xs font-medium text-white/50 mb-2">Meeting Score</h4>
-                  <div className="flex items-center gap-3">
-                    <span className="text-2xl font-bold text-emerald-400">87</span>
-                    <div className="flex-1">
-                      <ProgressBar value={87} variant="success" size="sm" />
-                      <p className="text-xs text-white/30 mt-1">Productive meeting</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </GlassCard>
-
-            <GlassCard>
-              <div className="flex items-center gap-2 mb-4">
                 <BarChart3 className="h-5 w-5 text-blue-400" />
                 <h3 className="text-sm font-semibold text-white">Quick Stats</h3>
               </div>
               <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs text-white/50">Duration</span>
-                  <span className="text-sm text-white">{Math.floor(meeting.duration / 60)} min</span>
-                </div>
                 <div className="flex items-center justify-between">
                   <span className="text-xs text-white/50">Participants</span>
                   <span className="text-sm text-white">{meeting.participants.length}</span>
@@ -513,14 +512,60 @@ export default function MeetingDetailPage() {
                   <span className="text-xs text-white/50">Decisions</span>
                   <span className="text-sm text-white">{meeting.decisions.length}</span>
                 </div>
-                {meeting.risks.length > 0 && (
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-white/50">Risks</span>
+                  <span className={cn('text-sm', meeting.risks.length > 0 ? 'text-amber-400' : 'text-white')}>
+                    {meeting.risks.length}
+                  </span>
+                </div>
+                {meeting.processingConfidence != null && (
                   <div className="flex items-center justify-between">
-                    <span className="text-xs text-white/50">Risks</span>
-                    <span className="text-sm text-amber-400">{meeting.risks.length}</span>
+                    <span className="text-xs text-white/50">Confidence</span>
+                    <span className="text-sm text-purple-400">
+                      {Math.round(meeting.processingConfidence * 100)}%
+                    </span>
                   </div>
                 )}
               </div>
             </GlassCard>
+
+            {meeting.actionItems.length > 0 && (
+              <GlassCard>
+                <div className="flex items-center gap-2 mb-4">
+                  <Clock className="h-5 w-5 text-emerald-400" />
+                  <h3 className="text-sm font-semibold text-white">Task Completion</h3>
+                </div>
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-white/50">{completedTasks} of {meeting.actionItems.length} done</span>
+                    <span className="text-emerald-400 font-medium">{completionPct}%</span>
+                  </div>
+                  <ProgressBar value={completionPct} variant="success" size="sm" />
+                </div>
+              </GlassCard>
+            )}
+
+            {meeting.participants.length > 0 && (
+              <GlassCard>
+                <div className="flex items-center gap-2 mb-4">
+                  <Users className="h-5 w-5 text-purple-400" />
+                  <h3 className="text-sm font-semibold text-white">Participants</h3>
+                </div>
+                <div className="space-y-2">
+                  {meeting.participants.map((p) => (
+                    <div key={p.id} className="flex items-center gap-2">
+                      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-purple-500/30 to-blue-500/30 text-xs font-medium text-purple-300">
+                        {p.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-xs font-medium text-white truncate">{p.name}</p>
+                        {p.role && <p className="text-xs text-white/40 truncate">{p.role}</p>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </GlassCard>
+            )}
           </div>
         </div>
       </div>

@@ -12,46 +12,54 @@ import {
   ArrowRight,
   Sparkles,
 } from 'lucide-react'
-import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { GlassCard } from '@/components/ui/glass-card'
 import { useStore as useAppStore } from '@/lib/store'
+import { api } from '@/lib/api'
 
 export default function AuthPage() {
   const router = useRouter()
   const login = useAppStore((s) => s.login)
   const [mode, setMode] = useState<'login' | 'register'>('login')
   const [showPassword, setShowPassword] = useState(false)
-  const [email, setEmail] = useState('alice@cortex.ai')
-  const [password, setPassword] = useState('••••••••')
+  const [name, setName] = useState('')
+  const [email, setEmail] = useState('demo@cortex.ai')
+  const [password, setPassword] = useState('password')
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
-  const handleGoogleLogin = () => {
+  const handleGoogleLogin = async () => {
     setLoading(true)
-    setTimeout(() => {
-      login({
-        id: 'usr-001',
-        name: 'Alice Chen',
-        email: 'alice@cortex.ai',
-        role: 'admin',
-      })
+    setError(null)
+    try {
+      // Google OAuth not available in API — fall back to demo login
+      const result = await api.login(email || 'demo@cortex.ai', password || 'password')
+      login(result.user, result.token)
       router.push('/dashboard')
-    }, 800)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Login failed')
+      setLoading(false)
+    }
   }
 
-  const handleEmailLogin = (e: React.FormEvent) => {
+  const handleEmailLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
-    setTimeout(() => {
-      login({
-        id: 'usr-001',
-        name: 'Alice Chen',
-        email: email,
-        role: 'admin',
-      })
+    setError(null)
+    try {
+      let result
+      if (mode === 'register') {
+        result = await api.register(email, name || email.split('@')[0], password)
+      } else {
+        result = await api.login(email, password)
+      }
+      login(result.user, result.token)
       router.push('/dashboard')
-    }, 1000)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Authentication failed')
+      setLoading(false)
+    }
   }
 
   return (
@@ -160,7 +168,23 @@ export default function AuthPage() {
               </div>
             </div>
 
+            {error && (
+              <div className="rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-400 mb-4">
+                {error}
+              </div>
+            )}
+
             <form onSubmit={handleEmailLogin} className="space-y-4">
+              {mode === 'register' && (
+                <Input
+                  label="Name"
+                  type="text"
+                  placeholder="Your full name"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  required
+                />
+              )}
               <Input
                 label="Email"
                 type="email"
@@ -186,16 +210,6 @@ export default function AuthPage() {
                   className="absolute right-3 top-[38px] text-white/30 hover:text-white/60 transition-colors"
                 >
                   {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </button>
-              </div>
-
-              <div className="flex items-center justify-between">
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input type="checkbox" className="rounded border-white/20 bg-white/5 text-purple-600 focus:ring-purple-500" />
-                  <span className="text-xs text-white/50">Remember me</span>
-                </label>
-                <button type="button" className="text-xs text-purple-400 hover:text-purple-300 transition-colors">
-                  Forgot password?
                 </button>
               </div>
 

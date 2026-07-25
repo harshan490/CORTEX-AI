@@ -19,14 +19,6 @@ const statusSizes = {
   xl: 'h-3.5 w-3.5 ring-2',
 }
 
-const ringWidths = {
-  xs: 'ring-1',
-  sm: 'ring-2',
-  md: 'ring-2',
-  lg: 'ring-3',
-  xl: 'ring-3',
-}
-
 interface AvatarProps {
   src?: string
   alt?: string
@@ -62,6 +54,7 @@ export function Avatar({
         )}
       >
         {src && !imgError ? (
+          // eslint-disable-next-line @next/next/no-img-element
           <img
             src={src}
             alt={alt}

@@ -9,7 +9,6 @@ import {
   Mail,
   Bell,
   Activity,
-  Sparkles,
   type LucideIcon,
 } from 'lucide-react'
 import { cn, formatRelativeTime } from '@/lib/utils'

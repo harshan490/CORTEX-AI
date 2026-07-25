@@ -1,7 +1,7 @@
 import uuid
 from typing import Optional
 from datetime import datetime, timezone
-from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, status
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Body, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from database import get_db
 from database.crud import (
@@ -38,9 +38,10 @@ async def list_meetings(
         except ValueError:
             raise HTTPException(status_code=400, detail=f"Invalid status: {status}")
     meetings = await get_meetings(db, status=status_enum, date_from=date_from, date_to=date_to, skip=skip, limit=limit)
+    _rel = {'participants', 'action_items', 'decisions', 'agent_logs', 'workflow_states'}
     return [
         MeetingResponse(
-            **m.__dict__,
+            **{k: v for k, v in m.__dict__.items() if not k.startswith('_') and k not in _rel},
             participants=[p.__dict__ for p in m.participants] if hasattr(m, 'participants') else [],
             action_item_count=len(m.action_items) if hasattr(m, 'action_items') else 0,
             decision_count=len(m.decisions) if hasattr(m, 'decisions') else 0,
@@ -54,12 +55,20 @@ async def create_meeting_endpoint(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    meeting = await create_meeting(
+    created = await create_meeting(
         db, title=data.title, date=data.date, created_by=current_user.id,
         duration_seconds=data.duration_seconds, gcal_event_id=data.gcal_event_id,
         recording_url=data.recording_url
     )
-    return MeetingResponse.model_validate(meeting)
+    meeting = await get_meeting(db, created.id)
+    _rel = {'participants', 'action_items', 'decisions', 'agent_logs', 'workflow_states'}
+    fields = {k: v for k, v in meeting.__dict__.items() if not k.startswith('_') and k not in _rel}
+    return MeetingResponse(
+        **fields,
+        participants=[p.__dict__ for p in meeting.participants],
+        action_item_count=len(meeting.action_items),
+        decision_count=len(meeting.decisions),
+    )
 
 
 @router.get("/{meeting_id}", response_model=MeetingResponse)
@@ -71,8 +80,9 @@ async def get_meeting_endpoint(
     meeting = await get_meeting(db, meeting_id)
     if not meeting:
         raise HTTPException(status_code=404, detail="Meeting not found")
+    _rel = {'participants', 'action_items', 'decisions', 'agent_logs', 'workflow_states'}
     return MeetingResponse(
-        **meeting.__dict__,
+        **{k: v for k, v in meeting.__dict__.items() if not k.startswith('_') and k not in _rel},
         participants=[p.__dict__ for p in meeting.participants],
         action_item_count=len(meeting.action_items),
         decision_count=len(meeting.decisions),
@@ -90,10 +100,21 @@ async def update_meeting_endpoint(
     if not meeting:
         raise HTTPException(status_code=404, detail="Meeting not found")
     kwargs = {k: v for k, v in data.model_dump(exclude_unset=True).items() if v is not None}
+    _rel = {'participants', 'action_items', 'decisions', 'agent_logs', 'workflow_states'}
     if not kwargs:
-        return MeetingResponse.model_validate(meeting)
+        return MeetingResponse(
+            **{k: v for k, v in meeting.__dict__.items() if not k.startswith('_') and k not in _rel},
+            participants=[p.__dict__ for p in meeting.participants],
+            action_item_count=len(meeting.action_items),
+            decision_count=len(meeting.decisions),
+        )
     updated = await update_meeting(db, meeting_id, **kwargs)
-    return MeetingResponse.model_validate(updated)
+    return MeetingResponse(
+        **{k: v for k, v in updated.__dict__.items() if not k.startswith('_') and k not in _rel},
+        participants=[p.__dict__ for p in updated.participants],
+        action_item_count=len(updated.action_items),
+        decision_count=len(updated.decisions),
+    )
 
 
 @router.delete("/{meeting_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -110,24 +131,16 @@ async def delete_meeting_endpoint(
 @router.post("/{meeting_id}/transcript", response_model=TranscriptResponse)
 async def upload_transcript(
     meeting_id: uuid.UUID,
-    data: Optional[TranscriptUpload] = None,
-    file: Optional[UploadFile] = File(None),
+    data: Optional[TranscriptUpload] = Body(None),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     meeting = await get_meeting(db, meeting_id)
     if not meeting:
         raise HTTPException(status_code=404, detail="Meeting not found")
-    if file:
-        import json
-        content = await file.read()
-        segments = json.loads(content) if isinstance(content, bytes) else content
-        if isinstance(segments, dict) and "segments" in segments:
-            segments = segments["segments"]
-    elif data:
-        segments = data.segments
-    else:
-        raise HTTPException(status_code=400, detail="Either JSON body or file is required")
+    if not data:
+        raise HTTPException(status_code=400, detail="JSON body with segments is required")
+    segments = data.segments
     await update_meeting(db, meeting_id, transcript={"segments": segments})
     return TranscriptResponse(meeting_id=meeting_id, segments=segments)
 

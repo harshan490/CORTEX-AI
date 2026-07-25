@@ -13,8 +13,6 @@ import {
   AlertTriangle,
   HelpCircle,
   BarChart3,
-  Brain,
-  Sparkles,
   Send,
   Volume2,
 } from 'lucide-react'
@@ -23,7 +21,6 @@ import { GlassCard } from '@/components/ui/glass-card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { ProgressBar } from '@/components/ui/progress-bar'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { Avatar, AvatarGroup } from '@/components/ui/avatar'
 
@@ -213,7 +210,7 @@ export default function LiveMeetingPage() {
           </div>
           <div className="flex items-center gap-2">
             <AvatarGroup>
-              {speakers.map((name, i) => (
+              {speakers.map((name) => (
                 <Avatar key={name} fallback={name.split(' ').map((n) => n[0]).join('')} alt={name} size="sm" />
               ))}
             </AvatarGroup>

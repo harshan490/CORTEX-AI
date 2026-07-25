@@ -1,192 +1,204 @@
-type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
+// ============================================================
+// CORTEX AI — Unified API Surface
+// Normalizes both demo and production providers to the same
+// interface: all methods return direct values (no ApiResponse).
+// Set NEXT_PUBLIC_DEMO_MODE=true to use demo fixtures.
+// ============================================================
 
-interface ApiOptions {
-  method?: HttpMethod
-  body?: unknown
-  headers?: Record<string, string>
-  params?: Record<string, string | number | boolean | undefined>
-  signal?: AbortSignal
+export const isDemoMode = process.env.NEXT_PUBLIC_DEMO_MODE === 'true'
+
+import { demoProvider } from '@/lib/demo/provider'
+import { apiClient } from '@/lib/api-client'
+import type {
+  Meeting,
+  ActionItem,
+  AgentActivity,
+  MeetingReport,
+  DashboardMetrics,
+  MemoryNode,
+  MemoryEdge,
+  AuthUser,
+  Clarification,
+  TaskFilters,
+  MeetingFilters,
+  MeetingInputMethod,
+} from '@/types'
+
+// Shared return shapes for listMeetings / listTasks
+export interface MeetingListResult {
+  meetings: Meeting[]
+  total: number
+  hasMore: boolean
 }
 
-interface ApiResponse<T = unknown> {
-  data: T
-  status: number
-  ok: boolean
-  message?: string
+export interface TaskListResult {
+  tasks: ActionItem[]
+  total: number
+  hasMore: boolean
 }
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api'
-
-function getAuthToken(): string | null {
-  if (typeof window === 'undefined') return null
-  try {
-    const store = localStorage.getItem('cortex-store')
-    if (store) {
-      const parsed = JSON.parse(store)
-      return parsed?.state?.token || null
-    }
-  } catch {
-    return null
-  }
-  return null
-}
-
-function buildUrl(endpoint: string, params?: ApiOptions['params']): string {
-  const url = new URL(`${API_BASE_URL}${endpoint.startsWith('/') ? endpoint : `/${endpoint}`}`)
-
-  if (params) {
-    Object.entries(params).forEach(([key, value]) => {
-      if (value !== undefined && value !== null) {
-        url.searchParams.set(key, String(value))
-      }
-    })
-  }
-
-  return url.toString()
-}
-
-async function request<T>(endpoint: string, options: ApiOptions = {}): Promise<ApiResponse<T>> {
-  const { method = 'GET', body, headers = {}, params, signal } = options
-
-  const token = getAuthToken()
-
-  const defaultHeaders: Record<string, string> = {
-    'Content-Type': 'application/json',
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    ...headers,
-  }
-
-  const config: RequestInit = {
-    method,
-    headers: defaultHeaders,
-    signal,
-  }
-
-  if (body && method !== 'GET') {
-    config.body = JSON.stringify(body)
-  }
-
-  const url = buildUrl(endpoint, params)
-
-  try {
-    const response = await fetch(url, config)
-    let data: T
-
-    const contentType = response.headers.get('content-type')
-    if (contentType?.includes('application/json')) {
-      data = (await response.json()) as T
-    } else {
-      data = (await response.text()) as unknown as T
-    }
-
-    if (!response.ok) {
-      const errorMessage =
-        typeof data === 'object' && data !== null && 'message' in data
-          ? (data as { message: string }).message
-          : `Request failed with status ${response.status}`
-
-      if (response.status === 401) {
-        if (typeof window !== 'undefined') {
-          localStorage.removeItem('cortex-store')
-          window.location.href = '/login'
-        }
-      }
-
-      throw new ApiError(errorMessage, response.status, data)
-    }
-
-    return { data, status: response.status, ok: true }
-  } catch (error) {
-    if (error instanceof ApiError) throw error
-    if (error instanceof DOMException && error.name === 'AbortError') {
-      throw new ApiError('Request was aborted', 0)
-    }
-    throw new ApiError(
-      error instanceof Error ? error.message : 'Network error',
-      0
-    )
-  }
-}
-
-export class ApiError extends Error {
-  status: number
-  data?: unknown
-
-  constructor(message: string, status: number, data?: unknown) {
-    super(message)
-    this.name = 'ApiError'
-    this.status = status
-    this.data = data
-  }
-}
+// ----------------------------------------------------------------
+// Normalized API — same signatures for all callers
+// ----------------------------------------------------------------
 
 export const api = {
-  get<T>(endpoint: string, options?: Omit<ApiOptions, 'method'>) {
-    return request<T>(endpoint, { ...options, method: 'GET' })
+  // --- Auth ---
+
+  async login(email: string, password: string): Promise<{ user: AuthUser; token: string }> {
+    if (isDemoMode) return demoProvider.login(email, password)
+    const res = await apiClient.login({ email, password })
+    return res.data
   },
 
-  post<T>(endpoint: string, body?: unknown, options?: Omit<ApiOptions, 'method' | 'body'>) {
-    return request<T>(endpoint, { ...options, method: 'POST', body })
+  async register(
+    email: string,
+    name: string,
+    password: string,
+  ): Promise<{ user: AuthUser; token: string }> {
+    if (isDemoMode) return demoProvider.register(email, name, password)
+    const res = await apiClient.register({ email, name, password })
+    return res.data
   },
 
-  put<T>(endpoint: string, body?: unknown, options?: Omit<ApiOptions, 'method' | 'body'>) {
-    return request<T>(endpoint, { ...options, method: 'PUT', body })
+  async getMe(): Promise<AuthUser> {
+    if (isDemoMode) return demoProvider.getMe()
+    const res = await apiClient.getMe()
+    return res.data
   },
 
-  patch<T>(endpoint: string, body?: unknown, options?: Omit<ApiOptions, 'method' | 'body'>) {
-    return request<T>(endpoint, { ...options, method: 'PATCH', body })
+  async healthCheck(): Promise<{ status: string; demo: boolean }> {
+    if (isDemoMode) return demoProvider.healthCheck()
+    const ok = await apiClient.healthCheck()
+    return { status: ok ? 'OK' : 'unavailable', demo: false }
   },
 
-  delete<T>(endpoint: string, options?: Omit<ApiOptions, 'method'>) {
-    return request<T>(endpoint, { ...options, method: 'DELETE' })
+  // --- Dashboard ---
+
+  async getDashboardMetrics(): Promise<DashboardMetrics> {
+    if (isDemoMode) return demoProvider.getDashboardMetrics()
+    const res = await apiClient.getDashboardMetrics()
+    return res.data
   },
-}
 
-export function createWebSocketConnection(path: string = '/ws'): WebSocket {
-  const wsBase = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:3001'
-  const token = getAuthToken()
-  const url = `${wsBase}${path}${token ? `?token=${token}` : ''}`
+  // --- Meetings ---
 
-  const ws = new WebSocket(url)
-
-  ws.onopen = () => {
-    console.log('[WS] Connection established')
-  }
-
-  ws.onerror = (error) => {
-    console.error('[WS] Connection error:', error)
-  }
-
-  ws.onclose = (event) => {
-    console.log(`[WS] Connection closed: code=${event.code}, reason=${event.reason}`)
-  }
-
-  return ws
-}
-
-export function startTranscriptionStream(
-  meetingId: string,
-  onTranscript: (text: string) => void,
-  onError?: (error: Event) => void
-): () => void {
-  const ws = createWebSocketConnection(`/ws/transcribe/${meetingId}`)
-
-  ws.onmessage = (event) => {
-    try {
-      const data = JSON.parse(event.data)
-      if (data.type === 'transcript' && data.text) {
-        onTranscript(data.text)
-      }
-    } catch {
-      onTranscript(event.data)
+  async listMeetings(filters?: MeetingFilters): Promise<MeetingListResult> {
+    if (isDemoMode) return demoProvider.listMeetings(filters)
+    const res = await apiClient.listMeetings(filters)
+    return {
+      meetings: res.data.data,
+      total: res.data.total,
+      hasMore: res.data.hasMore,
     }
-  }
+  },
 
-  if (onError) {
-    ws.onerror = onError
-  }
+  async getMeeting(id: string): Promise<Meeting> {
+    if (isDemoMode) return demoProvider.getMeeting(id)
+    const res = await apiClient.getMeeting(id)
+    return res.data
+  },
 
-  return () => {
-    ws.close()
-  }
+  async processMeeting(data: {
+    title: string
+    description?: string
+    transcript?: string
+    inputMethod?: string
+  }): Promise<Meeting> {
+    if (isDemoMode) return demoProvider.processMeeting(data)
+    const res = await apiClient.processMeeting({
+      title: data.title,
+      content: data.transcript ?? '',
+      inputMethod: (data.inputMethod ?? 'transcript') as MeetingInputMethod,
+    })
+    return res.data
+  },
+
+  async approveMeeting(id: string): Promise<Meeting> {
+    if (isDemoMode) return demoProvider.approveMeeting(id)
+    const res = await apiClient.approveMeeting(id)
+    return res.data
+  },
+
+  async rejectMeeting(id: string, reason: string): Promise<Meeting> {
+    if (isDemoMode) return demoProvider.rejectMeeting(id, reason)
+    const res = await apiClient.rejectMeeting(id, reason)
+    return res.data
+  },
+
+  // --- Tasks ---
+
+  async listTasks(filters?: TaskFilters): Promise<TaskListResult> {
+    if (isDemoMode) return demoProvider.listTasks(filters)
+    const res = await apiClient.listTasks(filters)
+    return {
+      tasks: res.data.data,
+      total: res.data.total,
+      hasMore: res.data.hasMore,
+    }
+  },
+
+  async getTask(id: string): Promise<ActionItem> {
+    if (isDemoMode) return demoProvider.getTask(id)
+    const res = await apiClient.getTask(id)
+    return res.data
+  },
+
+  async updateTask(
+    id: string,
+    updates: Partial<Pick<ActionItem, 'status' | 'priority' | 'owner' | 'deadline' | 'notes' | 'tags'>>,
+  ): Promise<ActionItem> {
+    if (isDemoMode) return demoProvider.updateTask(id, updates)
+    const res = await apiClient.updateTask(id, updates)
+    return res.data
+  },
+
+  async completeTask(id: string): Promise<ActionItem> {
+    if (isDemoMode) return demoProvider.completeTask(id)
+    const res = await apiClient.completeTask(id)
+    return res.data
+  },
+
+  async resolveClarification(
+    meetingId: string,
+    clarificationId: string,
+    resolution: string,
+  ): Promise<Clarification> {
+    if (isDemoMode) return demoProvider.resolveClarification(meetingId, clarificationId, resolution)
+    const res = await apiClient.resolveClarification(meetingId, clarificationId, resolution)
+    return res.data
+  },
+
+  // --- Activity ---
+
+  async listActivity(limit = 50): Promise<AgentActivity[]> {
+    if (isDemoMode) return demoProvider.listActivity(limit)
+    const res = await apiClient.listActivity({ pageSize: limit })
+    return res.data.data
+  },
+
+  // --- Memory ---
+
+  async getMemory(): Promise<{ nodes: MemoryNode[]; edges: MemoryEdge[] }> {
+    if (isDemoMode) return demoProvider.getMemory()
+    const res = await apiClient.getMemory()
+    return res.data
+  },
+
+  // --- Reports ---
+
+  async getReport(meetingId: string): Promise<MeetingReport> {
+    if (isDemoMode) return demoProvider.getReport(meetingId)
+    const res = await apiClient.getReport(meetingId)
+    return res.data
+  },
+
+  // --- Reminders ---
+
+  async triggerReminders(taskId: string): Promise<number> {
+    if (isDemoMode) return demoProvider.triggerReminders(taskId)
+    await apiClient.triggerReminders()
+    return 0
+  },
 }
+
+export type { ApiClientError } from '@/lib/api-client'

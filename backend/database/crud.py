@@ -86,7 +86,12 @@ async def get_meetings(db: AsyncSession, status: Optional[MeetingStatus] = None,
         conditions.append(Meeting.date <= date_to)
     if user_id:
         conditions.append(Meeting.created_by == user_id)
-    query = select(Meeting).order_by(Meeting.date.desc())
+    query = (
+        select(Meeting)
+        .options(selectinload(Meeting.participants), selectinload(Meeting.action_items),
+                 selectinload(Meeting.decisions), selectinload(Meeting.agent_logs))
+        .order_by(Meeting.date.desc())
+    )
     if conditions:
         query = query.where(and_(*conditions))
     query = query.offset(skip).limit(limit)

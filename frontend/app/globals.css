@@ -1,179 +1,243 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-@layer base {
-  :root {
-    --color-purple: 124 58 237;
-    --color-blue: 59 130 246;
-    --color-accent: 139 92 246;
-    --color-dark: 15 15 26;
-    --color-darker: 10 10 20;
-    --color-card: 255 255 255 / 0.05;
-    --color-border: 255 255 255 / 0.1;
-    --color-text-primary: 255 255 255;
-    --color-text-secondary: 160 160 180;
-    --color-text-muted: 110 110 130;
-    --glass-blur: 20px;
-    --glass-opacity: 0.05;
-    --neon-purple: 0 0 20px rgba(124, 58, 237, 0.5), 0 0 40px rgba(124, 58, 237, 0.2);
-    --neon-blue: 0 0 20px rgba(59, 130, 246, 0.5), 0 0 40px rgba(59, 130, 246, 0.2);
-  }
+/* ============================================================
+   CORTEX AI — Global Design System
+   ============================================================ */
 
-  * {
-    @apply border-white/10;
-  }
+:root {
+  /* Background Layers */
+  --bg-base: #050507;
+  --bg-secondary: #080816;
+  --bg-tertiary: #0D0B22;
 
-  html {
-    scroll-behavior: smooth;
-  }
+  /* Brand Colors */
+  --color-primary: #7B3EFF;
+  --color-secondary: #4C6FFF;
+  --color-accent: #6BCBFF;
+  --color-highlight: #B388FF;
 
-  body {
-    @apply bg-cortex-darker text-white antialiased;
-    font-family: 'Inter', system-ui, sans-serif;
-    min-height: 100vh;
-  }
+  /* Text */
+  --text-primary: #FFFFFF;
+  --text-secondary: #C8CBD6;
+  --text-muted: #8B8FA8;
 
-  ::selection {
-    @apply bg-cortex-purple/30 text-white;
-  }
+  /* Semantic */
+  --color-success: #22C55E;
+  --color-warning: #F59E0B;
+  --color-danger: #EF4444;
+
+  /* Glass */
+  --glass-base: rgba(255, 255, 255, 0.04);
+  --glass-elevated: rgba(255, 255, 255, 0.08);
+  --glass-strong: rgba(255, 255, 255, 0.12);
+  --glass-border: rgba(255, 255, 255, 0.08);
+  --glass-border-strong: rgba(255, 255, 255, 0.15);
+
+  /* Glow */
+  --glow-primary: rgba(123, 62, 255, 0.4);
+  --glow-secondary: rgba(76, 111, 255, 0.3);
+  --glow-accent: rgba(107, 203, 255, 0.4);
+
+  /* Focus ring */
+  --focus-ring: 0 0 0 2px rgba(123, 62, 255, 0.6);
+
+  /* Transitions */
+  --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-base: 200ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-slow: 350ms cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* Scrollbar */
+  --scrollbar-track: rgba(255,255,255,0.02);
+  --scrollbar-thumb: rgba(255,255,255,0.12);
+  --scrollbar-thumb-hover: rgba(255,255,255,0.2);
 }
+
+/* ============================================================
+   Base Reset & Typography
+   ============================================================ */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  color-scheme: dark;
+  scroll-behavior: auto;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  background-color: var(--bg-base);
+  color: var(--text-primary);
+  font-family: var(--font-inter), system-ui, sans-serif;
+  line-height: 1.6;
+  min-height: 100dvh;
+  overflow-x: hidden;
+  max-width: 100vw;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+/* ============================================================
+   Custom Scrollbar
+   ============================================================ */
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+}
+
+/* ============================================================
+   Focus States
+   ============================================================ */
+
+:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+  border-radius: 4px;
+}
+
+/* ============================================================
+   Selection
+   ============================================================ */
+
+::selection {
+  background: rgba(123, 62, 255, 0.3);
+  color: #fff;
+}
+
+/* ============================================================
+   Typography
+   ============================================================ */
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-plus-jakarta), system-ui, sans-serif;
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+}
+
+/* ============================================================
+   Glass Surfaces
+   ============================================================ */
 
 @layer components {
   .glass {
-    background: linear-gradient(135deg, rgba(255, 255, 255, var(--glass-opacity)), rgba(255, 255, 255, calc(var(--glass-opacity) / 2)));
-    backdrop-filter: blur(var(--glass-blur));
-    -webkit-backdrop-filter: blur(var(--glass-blur));
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
+    background: var(--glass-base);
+    border: 1px solid var(--glass-border);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
   }
 
-  .glass-hover {
-    transition: all 0.3s ease;
+  .glass-elevated {
+    background: var(--glass-elevated);
+    border: 1px solid var(--glass-border);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
   }
 
-  .glass-hover:hover {
-    background: linear-gradient(135deg, rgba(255, 255, 255, calc(var(--glass-opacity) * 2)), rgba(255, 255, 255, var(--glass-opacity)));
-    border-color: rgba(139, 92, 246, 0.3);
-    box-shadow: 0 8px 32px 0 rgba(124, 58, 237, 0.2);
-    transform: translateY(-2px);
+  .glass-strong {
+    background: var(--glass-strong);
+    border: 1px solid var(--glass-border-strong);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
   }
 
-  .glass-card {
-    @apply glass rounded-2xl p-6;
+  .text-gradient {
+    background: linear-gradient(135deg, #fff 0%, var(--color-highlight) 50%, var(--color-accent) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
   }
 
-  .neon-glow {
-    box-shadow: var(--neon-purple);
+  .text-gradient-primary {
+    background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-accent) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
   }
 
-  .neon-glow-blue {
-    box-shadow: var(--neon-blue);
+  .label-tag {
+    font-family: ui-monospace, Menlo, monospace;
+    font-size: 0.6875rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    font-weight: 500;
   }
 
-  .neon-border {
-    position: relative;
+  .glow-text {
+    text-shadow: 0 0 20px rgba(123, 62, 255, 0.5), 0 0 40px rgba(107, 203, 255, 0.3);
   }
 
-  .neon-border::before {
-    content: '';
-    position: absolute;
-    inset: -1px;
-    border-radius: inherit;
-    padding: 1px;
-    background: linear-gradient(135deg, rgba(124, 58, 237, 0.5), rgba(59, 130, 246, 0.5));
-    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-    -webkit-mask-composite: xor;
-    mask-composite: exclude;
-    pointer-events: none;
-  }
-
-  .neon-text {
-    @apply text-transparent bg-clip-text;
-    background-image: linear-gradient(135deg, #7C3AED, #3B82F6, #8B5CF6);
-    background-size: 200% auto;
-    animation: shimmer 2s linear infinite;
-  }
-
-  .animated-gradient {
-    background: linear-gradient(-45deg, #0A0A14, #0F0F1A, #1a0a2e, #0a1628);
-    background-size: 400% 400%;
-    animation: gradient-shift 15s ease infinite;
-  }
-
-  @keyframes gradient-shift {
-    0% { background-position: 0% 50%; }
-    50% { background-position: 100% 50%; }
-    100% { background-position: 0% 50%; }
-  }
-
-  .shimmer {
-    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.05), transparent);
-    background-size: 200% 100%;
-    animation: shimmer 2s linear infinite;
-  }
-
-  .floating {
-    animation: float 3s ease-in-out infinite;
-  }
-
-  .floating-delayed {
-    animation: float 3s ease-in-out 1.5s infinite;
+  .font-heading {
+    font-family: var(--font-plus-jakarta), system-ui, sans-serif;
   }
 }
 
-@layer utilities {
-  .text-gradient {
-    @apply text-transparent bg-clip-text;
-    background-image: linear-gradient(135deg, #7C3AED, #3B82F6);
-  }
+/* ============================================================
+   Animations
+   ============================================================ */
 
-  .bg-grid {
-    background-image:
-      linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
-    background-size: 40px 40px;
-  }
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
 
-  .scrollbar-thin {
-    scrollbar-width: thin;
-    scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
-  }
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
 
-  .scrollbar-thin::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
-  }
+@keyframes neuralPulse {
+  0%, 100% { opacity: 0.3; transform: scale(1); }
+  50% { opacity: 0.8; transform: scale(1.05); }
+}
 
-  .scrollbar-thin::-webkit-scrollbar-track {
-    background: transparent;
-  }
+@keyframes float {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-8px); }
+}
 
-  .scrollbar-thin::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.1);
-    border-radius: 3px;
-  }
+@keyframes orbitSlow {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
 
-  .scrollbar-thin::-webkit-scrollbar-thumb:hover {
-    background: rgba(255, 255, 255, 0.2);
-  }
+/* ============================================================
+   Reduced Motion
+   ============================================================ */
 
-  .scrollbar-thin::-webkit-scrollbar-corner {
-    background: transparent;
-  }
-
-  .scrollbar-hidden {
-    -ms-overflow-style: none;
-    scrollbar-width: none;
-  }
-
-  .scrollbar-hidden::-webkit-scrollbar {
-    display: none;
-  }
-
-  .animate-in {
-    animation: fade-in 0.5s ease-out, slide-up 0.5s ease-out;
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }
