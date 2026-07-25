@@ -19,3 +19,6 @@ htmlcov/
 alembic/versions/
 *.db
 *.sqlite3
+
+# TypeScript incremental build cache
+*.tsbuildinfo
