@@ -23,6 +23,14 @@ import type {
   MeetingFilters,
   MeetingInputMethod,
 } from '@/types'
+import type {
+  Workflow,
+  WorkflowMetrics,
+  WorkflowStatus,
+  HistoryFilters,
+  HistoryRecord,
+  HistoryMetrics,
+} from '@/types/workflows'
 
 // Shared return shapes for listMeetings / listTasks
 export interface MeetingListResult {
@@ -189,6 +197,36 @@ export const api = {
   async getReport(meetingId: string): Promise<MeetingReport> {
     if (isDemoMode) return demoProvider.getReport(meetingId)
     const res = await apiClient.getReport(meetingId)
+    return res.data
+  },
+
+  // --- Workflows ---
+
+  async listWorkflows(statusFilter?: WorkflowStatus | 'all'): Promise<Workflow[]> {
+    if (isDemoMode) return demoProvider.listWorkflows(statusFilter)
+    const res = await apiClient.listWorkflows(
+      statusFilter && statusFilter !== 'all' ? { status: statusFilter } : undefined
+    )
+    return res.data
+  },
+
+  async getWorkflowMetrics(): Promise<WorkflowMetrics> {
+    if (isDemoMode) return demoProvider.getWorkflowMetrics()
+    const res = await apiClient.getWorkflowMetrics()
+    return res.data
+  },
+
+  // --- History ---
+
+  async listHistory(filters?: HistoryFilters): Promise<{ records: HistoryRecord[]; total: number }> {
+    if (isDemoMode) return demoProvider.listHistory(filters)
+    const res = await apiClient.listHistory(filters)
+    return res.data
+  },
+
+  async getHistoryMetrics(): Promise<HistoryMetrics> {
+    if (isDemoMode) return demoProvider.getHistoryMetrics()
+    const res = await apiClient.getHistoryMetrics()
     return res.data
   },
 

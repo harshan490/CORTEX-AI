@@ -264,6 +264,18 @@ function mapMeetingStatus(s: string): Meeting['status'] {
   return map[s] ?? 'processing'
 }
 
+function mapWorkflowStatus(s: string): import('@/types/workflows').WorkflowStatus {
+  const map: Record<string, import('@/types/workflows').WorkflowStatus> = {
+    queued: 'queued',
+    processing: 'processing',
+    pending: 'awaiting_review',
+    completed: 'completed',
+    failed: 'failed',
+    cancelled: 'cancelled',
+  }
+  return map[s] ?? 'processing'
+}
+
 function mapBackendActionItem(item: BackendActionItem): ActionItem {
   return {
     id: item.id,
@@ -678,6 +690,140 @@ export const apiClient = {
     }
 
     return ok(paginate(mapped, Number(filters?.page ?? 1), limit, mapped.length))
+  },
+
+  // --- Workflows ---
+
+  async listWorkflows(
+    filters?: { status?: string },
+    signal?: AbortSignal
+  ): Promise<ApiResponse<import('@/types/workflows').Workflow[]>> {
+    const params = new URLSearchParams()
+    if (filters?.status && filters.status !== 'all') {
+      params.set('status', filters.status)
+    }
+
+    // Backend /api/agents/workflows returns workflow state objects
+    const data = await apiFetch<Array<{
+      id: string
+      meeting_id: string
+      agent_name?: string
+      status: string
+      started_at: string
+      completed_at?: string | null
+      result?: unknown
+      error?: string | null
+    }>>(`/api/agents/workflows?${params}`, { signal })
+
+    // Also fetch meetings to get titles
+    const meetingsData = await apiFetch<BackendMeeting[]>(`/api/meetings/?limit=200`, { signal })
+    const meetingMap = new Map(meetingsData.map((m) => [m.id, m]))
+
+    const workflows: import('@/types/workflows').Workflow[] = data.map((wf) => {
+      const meeting = meetingMap.get(wf.meeting_id)
+      const status = mapWorkflowStatus(wf.status)
+      return {
+        id: wf.id,
+        meetingId: wf.meeting_id,
+        meetingTitle: meeting?.title ?? 'Unknown Meeting',
+        status,
+        currentStage: wf.agent_name ?? 'Unknown',
+        progress: status === 'completed' ? 100 : status === 'failed' ? 0 : 50,
+        startedAt: wf.started_at,
+        updatedAt: wf.completed_at ?? wf.started_at,
+        durationMs: wf.completed_at
+          ? new Date(wf.completed_at).getTime() - new Date(wf.started_at).getTime()
+          : undefined,
+        retryCount: 0,
+        approvalStatus: status === 'awaiting_review' ? 'pending' as const : undefined,
+        completedStages: status === 'completed' ? 15 : 0,
+        totalStages: 15,
+        stages: [],
+      }
+    })
+
+    return ok(workflows)
+  },
+
+  async getWorkflowMetrics(
+    signal?: AbortSignal
+  ): Promise<ApiResponse<import('@/types/workflows').WorkflowMetrics>> {
+    // Derive metrics from workflow list
+    const res = await this.listWorkflows(undefined, signal)
+    const workflows = res.data
+    const active = workflows.filter((w) => w.status === 'processing').length
+    const awaiting = workflows.filter((w) => w.status === 'awaiting_review').length
+    const completed = workflows.filter((w) => w.status === 'completed').length
+    const failed = workflows.filter((w) => w.status === 'failed').length
+    const completedWithDuration = workflows.filter((w) => w.status === 'completed' && w.durationMs)
+    const avgMs = completedWithDuration.length > 0
+      ? completedWithDuration.reduce((s, w) => s + (w.durationMs ?? 0), 0) / completedWithDuration.length
+      : 0
+
+    return ok({ active, awaitingApproval: awaiting, completed, failed, avgProcessingTimeMs: avgMs })
+  },
+
+  // --- History ---
+
+  async listHistory(
+    filters?: import('@/types/workflows').HistoryFilters,
+    signal?: AbortSignal
+  ): Promise<ApiResponse<{ records: import('@/types/workflows').HistoryRecord[]; total: number }>> {
+    const params = new URLSearchParams()
+    params.set('limit', String(filters?.pageSize ?? 50))
+    const skip = ((filters?.page ?? 1) - 1) * (filters?.pageSize ?? 50)
+    params.set('skip', String(skip))
+    if (filters?.status?.length === 1) params.set('status', filters.status[0])
+    if (filters?.dateFrom) params.set('date_from', filters.dateFrom)
+    if (filters?.dateTo) params.set('date_to', filters.dateTo)
+
+    const meetings = await apiFetch<BackendMeeting[]>(`/api/meetings/?${params}`, { signal })
+
+    let records: import('@/types/workflows').HistoryRecord[] = meetings.map((m) => ({
+      id: m.id,
+      title: m.title,
+      date: m.date ?? m.created_at,
+      createdAt: m.created_at,
+      status: mapMeetingStatus(m.status),
+      participantCount: m.participants?.length ?? 0,
+      decisionCount: m.decision_count ?? 0,
+      actionItemCount: m.action_item_count ?? 0,
+      riskCount: 0,
+      processingConfidence: undefined,
+      processingDurationMs: m.duration_seconds ? m.duration_seconds * 1000 : undefined,
+      approvalOutcome: m.status === 'completed' ? 'approved' as const : undefined,
+      executiveSummary: m.summary ?? undefined,
+      hasReport: m.status === 'completed',
+    }))
+
+    // Client-side filtering for what backend doesn't support
+    if (filters?.search) {
+      const q = filters.search.toLowerCase()
+      records = records.filter(
+        (r) => r.title.toLowerCase().includes(q) || (r.executiveSummary ?? '').toLowerCase().includes(q)
+      )
+    }
+
+    if (filters?.sortOrder === 'asc') {
+      records.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+    } else {
+      records.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+    }
+
+    return ok({ records, total: records.length })
+  },
+
+  async getHistoryMetrics(
+    signal?: AbortSignal
+  ): Promise<ApiResponse<import('@/types/workflows').HistoryMetrics>> {
+    const overview = await apiFetch<BackendAnalyticsOverview>(`/api/analytics/overview`, { signal })
+    return ok({
+      totalMeetings: overview.total_meetings,
+      completed: overview.completed_tasks,
+      awaitingReview: overview.overdue_items,
+      failed: overview.critical_risks,
+      totalActionItems: overview.total_action_items,
+    })
   },
 
   // --- Memory --- (not available in backend — demo only)

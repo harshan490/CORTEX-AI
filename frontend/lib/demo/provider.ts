@@ -29,6 +29,16 @@ import {
   DEMO_REPORTS,
   DEMO_ALL_TASKS,
 } from '@/lib/demo/fixtures'
+import { DEMO_WORKFLOWS } from '@/lib/demo/workflow-fixtures'
+import type {
+  Workflow,
+  WorkflowMetrics,
+  WorkflowStatus,
+  HistoryFilters,
+  HistoryRecord,
+  HistoryMetrics,
+  HistorySortOrder,
+} from '@/types/workflows'
 
 // ------------------------------------------------------------
 // Local state (persisted across page reloads in demo mode)
@@ -430,5 +440,103 @@ export const demoProvider = {
   async triggerReminders(_taskId: string): Promise<number> {
     await delay(200)
     return 1
+  },
+
+  // Workflows
+  async listWorkflows(statusFilter?: WorkflowStatus | 'all'): Promise<Workflow[]> {
+    await delay(300)
+    if (!statusFilter || statusFilter === 'all') return DEMO_WORKFLOWS
+    return DEMO_WORKFLOWS.filter((w) => w.status === statusFilter)
+  },
+
+  async getWorkflowMetrics(): Promise<WorkflowMetrics> {
+    await delay(200)
+    const active = DEMO_WORKFLOWS.filter((w) => w.status === 'processing').length
+    const awaiting = DEMO_WORKFLOWS.filter((w) => w.status === 'awaiting_review').length
+    const completed = DEMO_WORKFLOWS.filter((w) => w.status === 'completed').length
+    const failed = DEMO_WORKFLOWS.filter((w) => w.status === 'failed').length
+    const completedWithDuration = DEMO_WORKFLOWS.filter((w) => w.status === 'completed' && w.durationMs)
+    const avgMs = completedWithDuration.length > 0
+      ? completedWithDuration.reduce((s, w) => s + (w.durationMs ?? 0), 0) / completedWithDuration.length
+      : 0
+    return { active, awaitingApproval: awaiting, completed, failed, avgProcessingTimeMs: avgMs }
+  },
+
+  // History
+  async listHistory(
+    filters?: HistoryFilters
+  ): Promise<{ records: HistoryRecord[]; total: number }> {
+    await delay(300)
+    const { meetings } = getState()
+
+    let records: HistoryRecord[] = meetings.map((m) => ({
+      id: m.id,
+      title: m.title,
+      date: m.createdAt,
+      createdAt: m.createdAt,
+      status: m.status,
+      participantCount: m.participants.length,
+      decisionCount: m.decisions.length,
+      actionItemCount: m.actionItems.length,
+      riskCount: m.risks.length,
+      processingConfidence: m.processingConfidence,
+      processingDurationMs: undefined,
+      approvalOutcome: m.status === 'approved'
+        ? 'approved' as const
+        : m.status === 'rejected'
+          ? 'rejected' as const
+          : m.status === 'awaiting_review'
+            ? 'pending' as const
+            : undefined,
+      owner: m.participants[0]?.name,
+      executiveSummary: m.executiveSummary,
+      hasReport: m.status === 'approved',
+    }))
+
+    // Apply filters
+    if (filters?.search) {
+      const q = filters.search.toLowerCase()
+      records = records.filter(
+        (r) =>
+          r.title.toLowerCase().includes(q) ||
+          (r.executiveSummary ?? '').toLowerCase().includes(q)
+      )
+    }
+    if (filters?.status && filters.status.length > 0) {
+      records = records.filter((r) => filters.status!.includes(r.status))
+    }
+    if (filters?.dateFrom) {
+      const from = new Date(filters.dateFrom)
+      records = records.filter((r) => new Date(r.date) >= from)
+    }
+    if (filters?.dateTo) {
+      const to = new Date(filters.dateTo)
+      to.setHours(23, 59, 59, 999)
+      records = records.filter((r) => new Date(r.date) <= to)
+    }
+    if (filters?.highRiskOnly) {
+      records = records.filter((r) => r.riskCount > 0)
+    }
+
+    // Sort
+    const sortOrder: HistorySortOrder = filters?.sortOrder ?? 'desc'
+    records.sort((a, b) => {
+      const cmp = new Date(a.date).getTime() - new Date(b.date).getTime()
+      return sortOrder === 'asc' ? cmp : -cmp
+    })
+
+    return { records, total: records.length }
+  },
+
+  async getHistoryMetrics(): Promise<HistoryMetrics> {
+    await delay(200)
+    const { meetings } = getState()
+    return {
+      totalMeetings: meetings.length,
+      completed: meetings.filter((m) => m.status === 'approved').length,
+      awaitingReview: meetings.filter((m) => m.status === 'awaiting_review').length,
+      failed: meetings.filter((m) => m.status === 'rejected').length,
+      totalActionItems: meetings.reduce((s, m) => s + m.actionItems.length, 0),
+    }
   },
 }
