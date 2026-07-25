@@ -19,6 +19,7 @@ import {
   CheckCircle,
   XCircle,
   HelpCircle,
+  RefreshCw,
 } from 'lucide-react'
 import { cn, formatDate } from '@/lib/utils'
 import { GlassCard } from '@/components/ui/glass-card'
@@ -27,7 +28,7 @@ import { Button } from '@/components/ui/button'
 import { ProgressBar } from '@/components/ui/progress-bar'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { api } from '@/lib/api'
-import type { MeetingStatus, Decision, ActionItem, Risk, Clarification, TranscriptSegment } from '@/types'
+import type { MeetingStatus, Decision, ActionItem, Risk, Clarification, Dependency, TranscriptSegment } from '@/types'
 
 type TabId = 'transcript' | 'summary' | 'actions' | 'decisions' | 'risks'
 
@@ -44,6 +45,7 @@ const statusConfig: Record<MeetingStatus, { variant: 'success' | 'warning' | 'in
   awaiting_review: { variant: 'warning', label: 'Awaiting Review' },
   processing: { variant: 'info', label: 'Processing' },
   rejected: { variant: 'danger', label: 'Rejected' },
+  failed: { variant: 'danger', label: 'Failed' },
   archived: { variant: 'default', label: 'Archived' },
 }
 
@@ -88,7 +90,12 @@ export default function MeetingDetailPage() {
   const { data: meeting, isLoading, error } = useQuery({
     queryKey: ['meeting', meetingId],
     queryFn: () => api.getMeeting(meetingId),
-    staleTime: 30_000,
+    staleTime: 5_000,
+    refetchInterval: (query) => {
+      const status = query.state.data?.status
+      if (status === 'processing') return 2_000
+      return false
+    },
   })
 
   const approveMutation = useMutation({
@@ -101,6 +108,17 @@ export default function MeetingDetailPage() {
 
   const rejectMutation = useMutation({
     mutationFn: () => api.rejectMeeting(meetingId, 'Rejected by reviewer'),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['meeting', meetingId] })
+      queryClient.invalidateQueries({ queryKey: ['meetings'] })
+    },
+  })
+
+  const retryMutation = useMutation({
+    mutationFn: async () => {
+      const { apiClient } = await import('@/lib/api-client')
+      await apiClient.retryProcessing(meetingId)
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['meeting', meetingId] })
       queryClient.invalidateQueries({ queryKey: ['meetings'] })
@@ -209,6 +227,17 @@ export default function MeetingDetailPage() {
               </Button>
             </div>
           )}
+          {meeting.status === 'failed' && (
+            <Button
+              variant="primary"
+              size="sm"
+              leftIcon={<RefreshCw className="h-4 w-4" />}
+              loading={retryMutation.isPending}
+              onClick={() => retryMutation.mutate()}
+            >
+              Retry Processing
+            </Button>
+          )}
         </motion.div>
 
         <div className="flex items-center gap-1 border-b border-white/10 overflow-x-auto scrollbar-hidden">
@@ -239,6 +268,47 @@ export default function MeetingDetailPage() {
             )
           })}
         </div>
+
+        {meeting.status === 'processing' && (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="rounded-xl border border-blue-500/20 bg-blue-500/10 px-4 py-3 flex items-center gap-3"
+          >
+            <div className="h-4 w-4 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
+            <p className="text-sm text-blue-300">AI is analyzing this meeting. The page will update automatically.</p>
+          </motion.div>
+        )}
+
+        {meeting.status === 'failed' && (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3"
+          >
+            <div className="flex items-center gap-3">
+              <AlertTriangle className="h-5 w-5 text-red-400 shrink-0" />
+              <div className="flex-1">
+                <p className="text-sm font-medium text-red-300">Processing Failed</p>
+                <p className="text-xs text-red-400/70 mt-0.5">An error occurred during AI analysis. You can retry processing.</p>
+              </div>
+              <Button
+                variant="secondary"
+                size="sm"
+                leftIcon={<RefreshCw className="h-4 w-4" />}
+                loading={retryMutation.isPending}
+                onClick={() => retryMutation.mutate()}
+              >
+                Retry
+              </Button>
+            </div>
+            {retryMutation.isError && (
+              <p className="text-xs text-red-400 mt-2">
+                {retryMutation.error instanceof Error ? retryMutation.error.message : 'Retry failed'}
+              </p>
+            )}
+          </motion.div>
+        )}
 
         <div className="grid grid-cols-1 xl:grid-cols-4 gap-6">
           <div className="xl:col-span-3">
@@ -317,6 +387,32 @@ export default function MeetingDetailPage() {
                         </div>
                       )}
 
+                      {meeting.dependencies.length > 0 && (
+                        <div>
+                          <h4 className="text-sm font-semibold text-cyan-400 mb-3 flex items-center gap-2">
+                            <GitBranch className="h-4 w-4" />
+                            Dependencies
+                          </h4>
+                          <div className="space-y-2">
+                            {meeting.dependencies.map((dep: Dependency) => (
+                              <div key={dep.id} className="flex items-start gap-3 rounded-lg border border-cyan-500/10 bg-cyan-500/5 p-3">
+                                <GitBranch className="h-4 w-4 text-cyan-400 shrink-0 mt-0.5" />
+                                <div>
+                                  <p className="text-sm text-white/80">
+                                    <span className="text-cyan-300">{dep.fromItemId}</span>
+                                    {' '}<Badge variant="default" size="sm">{dep.type}</Badge>{' '}
+                                    <span className="text-cyan-300">{dep.toItemId}</span>
+                                  </p>
+                                  {dep.description && (
+                                    <p className="text-xs text-white/50 mt-0.5">{dep.description}</p>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
                       {meeting.clarifications.filter(c => c.status === 'pending').length > 0 && (
                         <div>
                           <h4 className="text-sm font-semibold text-amber-400 mb-3 flex items-center gap-2">
@@ -327,7 +423,12 @@ export default function MeetingDetailPage() {
                             {meeting.clarifications.filter(c => c.status === 'pending').map((c: Clarification) => (
                               <div key={c.id} className="flex items-start gap-3 rounded-lg border border-amber-500/10 bg-amber-500/5 p-3">
                                 <HelpCircle className="h-4 w-4 text-amber-400 shrink-0 mt-0.5" />
-                                <p className="text-sm text-white/80">{c.question}</p>
+                                <div>
+                                  <p className="text-sm text-white/80">{c.question}</p>
+                                  {c.context && (
+                                    <p className="text-xs text-white/40 mt-0.5 italic">{c.context}</p>
+                                  )}
+                                </div>
                               </div>
                             ))}
                           </div>
@@ -516,6 +617,16 @@ export default function MeetingDetailPage() {
                   <span className="text-xs text-white/50">Risks</span>
                   <span className={cn('text-sm', meeting.risks.length > 0 ? 'text-amber-400' : 'text-white')}>
                     {meeting.risks.length}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-white/50">Dependencies</span>
+                  <span className="text-sm text-white">{meeting.dependencies.length}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-white/50">Open Questions</span>
+                  <span className={cn('text-sm', meeting.clarifications.filter(c => c.status === 'pending').length > 0 ? 'text-amber-400' : 'text-white')}>
+                    {meeting.clarifications.filter(c => c.status === 'pending').length}
                   </span>
                 </div>
                 {meeting.processingConfidence != null && (

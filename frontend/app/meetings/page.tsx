@@ -45,6 +45,7 @@ const statusConfig: Record<MeetingStatus, { variant: 'success' | 'warning' | 'in
   awaiting_review: { variant: 'warning', label: 'Awaiting Review' },
   processing: { variant: 'info', label: 'Processing' },
   rejected: { variant: 'danger', label: 'Rejected' },
+  failed: { variant: 'danger', label: 'Failed' },
   archived: { variant: 'default', label: 'Archived' },
 }
 

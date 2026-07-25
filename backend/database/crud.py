@@ -6,7 +6,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from database.models import (
     User, Meeting, Participant, ActionItem, Decision, Task, Reminder,
-    AgentLog, OrganizationMemory, WorkflowState, MeetingStatus, ItemStatus
+    AgentLog, OrganizationMemory, WorkflowState, MeetingStatus, ItemStatus,
+    Risk, Dependency, Clarification,
 )
 
 
@@ -67,7 +68,9 @@ async def get_meeting(db: AsyncSession, meeting_id: uuid.UUID) -> Optional[Meeti
     result = await db.execute(
         select(Meeting)
         .options(selectinload(Meeting.participants), selectinload(Meeting.action_items),
-                 selectinload(Meeting.decisions), selectinload(Meeting.agent_logs))
+                 selectinload(Meeting.decisions), selectinload(Meeting.agent_logs),
+                 selectinload(Meeting.risks), selectinload(Meeting.dependencies),
+                 selectinload(Meeting.clarifications))
         .where(Meeting.id == meeting_id)
     )
     return result.scalar_one_or_none()
@@ -89,7 +92,9 @@ async def get_meetings(db: AsyncSession, status: Optional[MeetingStatus] = None,
     query = (
         select(Meeting)
         .options(selectinload(Meeting.participants), selectinload(Meeting.action_items),
-                 selectinload(Meeting.decisions), selectinload(Meeting.agent_logs))
+                 selectinload(Meeting.decisions), selectinload(Meeting.agent_logs),
+                 selectinload(Meeting.risks), selectinload(Meeting.dependencies),
+                 selectinload(Meeting.clarifications))
         .order_by(Meeting.date.desc())
     )
     if conditions:

@@ -1,5 +1,5 @@
 from pydantic_settings import BaseSettings
-from typing import Optional, ClassVar
+from typing import Literal, Optional, ClassVar
 
 
 class Settings(BaseSettings):
@@ -12,6 +12,16 @@ class Settings(BaseSettings):
     NEO4J_PASSWORD: str = "password"
 
     OPENAI_API_KEY: str = ""
+    OPENAI_MODEL: str = "gpt-4o"
+    OPENAI_STORE_RESPONSES: bool = False
+
+    LLM_PROVIDER: Literal["mock", "openai", "ollama"] = "mock"
+    LLM_MOCK_MODE: bool = True
+    LLM_TIMEOUT_SECONDS: int = 60
+    LLM_MAX_RETRIES: int = 2
+
+    OLLAMA_BASE_URL: str = "http://127.0.0.1:11434"
+    OLLAMA_MODEL: str = "qwen3:4b-instruct"
 
     JWT_SECRET: str = "change-this-secret-key-in-production"
     JWT_ALGORITHM: str = "HS256"

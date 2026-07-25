@@ -32,10 +32,10 @@ export type Priority = 'critical' | 'high' | 'medium' | 'low'
 export type MeetingInputMethod = 'transcript' | 'audio' | 'video' | 'live'
 
 // Backend meeting status values
-export type BackendMeetingStatus = 'scheduled' | 'in_progress' | 'completed'
+export type BackendMeetingStatus = 'scheduled' | 'in_progress' | 'completed' | 'processing' | 'awaiting_review' | 'failed'
 
 // Frontend meeting status values
-export type MeetingStatus = 'processing' | 'awaiting_review' | 'approved' | 'rejected' | 'archived'
+export type MeetingStatus = 'processing' | 'awaiting_review' | 'approved' | 'rejected' | 'archived' | 'failed'
 
 // ------------------------------------------------------------
 // Auth

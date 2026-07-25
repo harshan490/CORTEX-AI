@@ -32,6 +32,7 @@ export const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:8000'
 
 const DEFAULT_TIMEOUT = 30_000
+const PROCESSING_TIMEOUT = 330_000
 
 // ------------------------------------------------------------
 // Fetch wrapper
@@ -140,6 +141,7 @@ interface BackendMeeting {
   duration_seconds?: number | null
   status: string
   summary?: string | null
+  processing_confidence?: number | null
   transcript?: { segments: BackendTranscriptSegment[] } | null
   created_at: string
   updated_at: string
@@ -149,6 +151,9 @@ interface BackendMeeting {
   participants?: BackendParticipant[]
   action_item_count?: number
   decision_count?: number
+  risk_count?: number
+  dependency_count?: number
+  clarification_count?: number
 }
 
 interface BackendParticipant {
@@ -187,6 +192,8 @@ interface BackendDecision {
   title: string
   description?: string | null
   made_by?: string | null
+  decided_by_name?: string | null
+  evidence?: string | null
   timestamp: string
   confidence?: number | null
   is_confirmed: boolean
@@ -218,6 +225,41 @@ interface BackendAgentLog {
   completed_at?: string | null
   result?: unknown
   error?: string | null
+}
+
+interface BackendRisk {
+  id: string
+  meeting_id: string
+  title: string
+  description?: string | null
+  severity: string
+  likelihood: string
+  mitigation?: string | null
+  owner?: string | null
+  evidence?: string | null
+  confidence: number
+  created_at: string
+}
+
+interface BackendDependency {
+  id: string
+  meeting_id: string
+  from_item: string
+  to_item: string
+  dependency_type: string
+  description?: string | null
+  created_at: string
+}
+
+interface BackendClarification {
+  id: string
+  meeting_id: string
+  question: string
+  context?: string | null
+  evidence?: string | null
+  status: string
+  resolution?: string | null
+  created_at: string
 }
 
 interface BackendAnalyticsOverview {
@@ -257,11 +299,14 @@ function mapPriority(p: string): Priority {
 // Map backend meeting status → frontend MeetingStatus
 function mapMeetingStatus(s: string): Meeting['status'] {
   const map: Record<string, Meeting['status']> = {
-    scheduled: 'processing',
+    scheduled: 'awaiting_review',
     in_progress: 'processing',
     completed: 'approved',
+    processing: 'processing',
+    awaiting_review: 'awaiting_review',
+    failed: 'failed',
   }
-  return map[s] ?? 'processing'
+  return map[s] ?? 'awaiting_review'
 }
 
 function mapWorkflowStatus(s: string): import('@/types/workflows').WorkflowStatus {
@@ -305,7 +350,7 @@ function mapBackendDecision(d: BackendDecision): import('@/types').Decision {
     meetingId: d.meeting_id,
     title: d.title,
     description: d.description ?? '',
-    decidedBy: d.made_by ? [d.made_by] : ['Unknown'],
+    decidedBy: d.decided_by_name ? [d.decided_by_name] : d.made_by ? [d.made_by] : ['Unknown'],
     evidenceSegmentIds: [],
     confidence: d.confidence ?? 0.8,
     timestamp: d.timestamp,
@@ -313,10 +358,52 @@ function mapBackendDecision(d: BackendDecision): import('@/types').Decision {
   }
 }
 
+function mapBackendRisk(r: BackendRisk): import('@/types').Risk {
+  return {
+    id: r.id,
+    meetingId: r.meeting_id,
+    title: r.title,
+    description: r.description ?? '',
+    severity: (['critical', 'high', 'medium', 'low'].includes(r.severity) ? r.severity : 'medium') as 'critical' | 'high' | 'medium' | 'low',
+    likelihood: (['high', 'medium', 'low'].includes(r.likelihood) ? r.likelihood : 'medium') as 'high' | 'medium' | 'low',
+    mitigation: r.mitigation ?? undefined,
+    owner: r.owner ?? undefined,
+    evidenceSegmentIds: [],
+    confidence: r.confidence,
+  }
+}
+
+function mapBackendDependency(d: BackendDependency): import('@/types').Dependency {
+  return {
+    id: d.id,
+    meetingId: d.meeting_id,
+    fromItemId: d.from_item,
+    toItemId: d.to_item,
+    type: (['blocks', 'requires', 'informs', 'follows'].includes(d.dependency_type) ? d.dependency_type : 'requires') as 'blocks' | 'requires' | 'informs' | 'follows',
+    description: d.description ?? '',
+  }
+}
+
+function mapBackendClarification(c: BackendClarification): import('@/types').Clarification {
+  return {
+    id: c.id,
+    meetingId: c.meeting_id,
+    question: c.question,
+    context: c.context ?? '',
+    evidenceSegmentIds: [],
+    status: (['pending', 'resolved', 'dismissed'].includes(c.status) ? c.status : 'pending') as 'pending' | 'resolved' | 'dismissed',
+    resolution: c.resolution ?? undefined,
+    createdAt: c.created_at,
+  }
+}
+
 function mapBackendMeeting(
   m: BackendMeeting,
   actionItems: ActionItem[],
-  decisions: import('@/types').Decision[]
+  decisions: import('@/types').Decision[],
+  risks: import('@/types').Risk[] = [],
+  dependencies: import('@/types').Dependency[] = [],
+  clarifications: import('@/types').Clarification[] = [],
 ): Meeting {
   // Map transcript segments
   const segments = m.transcript?.segments ?? []
@@ -340,7 +427,10 @@ function mapBackendMeeting(
     id: m.id,
     title: m.title,
     inputMethod: 'transcript',
-    processingState: m.status === 'completed' ? 'completed' : 'awaiting_review',
+    processingState: m.status === 'completed' ? 'completed'
+      : m.status === 'failed' ? 'failed'
+      : m.status === 'processing' || m.status === 'in_progress' ? 'uploading'
+      : 'awaiting_review',
     createdAt: m.created_at,
     updatedAt: m.updated_at,
     duration: m.duration_seconds ?? undefined,
@@ -350,9 +440,10 @@ function mapBackendMeeting(
     executiveSummary: m.summary ?? undefined,
     decisions,
     actionItems,
-    risks: [],
-    dependencies: [],
-    clarifications: [],
+    risks,
+    dependencies,
+    clarifications,
+    processingConfidence: m.processing_confidence ?? undefined,
     agentActivities: [],
     tags: [],
     status: mapMeetingStatus(m.status),
@@ -487,57 +578,102 @@ export const apiClient = {
   },
 
   async getMeeting(meetingId: string, signal?: AbortSignal): Promise<ApiResponse<Meeting>> {
-    const [meeting, actionItems, decisions] = await Promise.all([
+    const [meeting, actionItems, decisions, risks, deps, clarifications] = await Promise.all([
       apiFetch<BackendMeeting>(`/api/meetings/${meetingId}`, { signal }),
       apiFetch<BackendActionItem[]>(`/api/meetings/${meetingId}/action-items`, { signal }),
       apiFetch<BackendDecision[]>(`/api/meetings/${meetingId}/decisions`, { signal }),
+      apiFetch<BackendRisk[]>(`/api/meetings/${meetingId}/risks`, { signal }).catch(() => [] as BackendRisk[]),
+      apiFetch<BackendDependency[]>(`/api/meetings/${meetingId}/dependencies`, { signal }).catch(() => [] as BackendDependency[]),
+      apiFetch<BackendClarification[]>(`/api/meetings/${meetingId}/clarifications`, { signal }).catch(() => [] as BackendClarification[]),
     ])
     return ok(
       mapBackendMeeting(
         meeting,
         actionItems.map(mapBackendActionItem),
-        decisions.map(mapBackendDecision)
+        decisions.map(mapBackendDecision),
+        risks.map(mapBackendRisk),
+        deps.map(mapBackendDependency),
+        clarifications.map(mapBackendClarification),
       )
     )
   },
+
+  _processingInFlight: false,
 
   async processMeeting(payload: {
     title: string
     content: string
     inputMethod: Meeting['inputMethod']
   }): Promise<ApiResponse<Meeting>> {
-    // Step 1: Create the meeting
-    const now = new Date().toISOString()
-    const meeting = await apiFetch<BackendMeeting>('/api/meetings/', {
-      method: 'POST',
-      body: JSON.stringify({
-        title: payload.title,
-        date: now,
-      }),
-    })
-
-    // Step 2: Upload transcript if provided
-    if (payload.content && payload.inputMethod === 'transcript') {
-      const segments = payload.content
-        .split('\n')
-        .filter((line) => line.trim())
-        .map((line, idx) => ({
-          speaker: 'Speaker',
-          text: line.trim(),
-          start: idx * 5,
-          end: (idx + 1) * 5,
-        }))
-
-      await apiFetch(`/api/meetings/${meeting.id}/transcript`, {
-        method: 'POST',
-        body: JSON.stringify({ segments }),
-      })
+    if (this._processingInFlight) {
+      throw new ApiClientError('A meeting is already being processed. Please wait.', 409)
     }
+    this._processingInFlight = true
 
-    // Step 3: Trigger processing
-    await apiFetch(`/api/meetings/${meeting.id}/process`, { method: 'POST' })
+    try {
+      // Step 1: Create the meeting
+      const now = new Date().toISOString()
+      const meeting = await apiFetch<BackendMeeting>('/api/meetings/', {
+        method: 'POST',
+        body: JSON.stringify({
+          title: payload.title,
+          date: now,
+        }),
+      })
 
-    return ok(mapBackendMeeting(meeting, [], []))
+      // Step 2: Upload transcript if provided
+      if (payload.content && payload.inputMethod === 'transcript') {
+        const segments = payload.content
+          .split('\n')
+          .filter((line) => line.trim())
+          .map((line, idx) => {
+            // Parse "Speaker Name: text" format
+            const colonIdx = line.indexOf(':')
+            let speaker = 'Unknown'
+            let text = line.trim()
+            if (colonIdx > 0 && colonIdx < 50) {
+              const candidate = line.slice(0, colonIdx).trim()
+              // Only treat as speaker if it looks like a name (no special chars)
+              if (candidate && /^[A-Za-z\s.'-]+$/.test(candidate)) {
+                speaker = candidate
+                text = line.slice(colonIdx + 1).trim()
+              }
+            }
+            return {
+              speaker,
+              text,
+              start: idx * 5,
+              end: (idx + 1) * 5,
+            }
+          })
+
+        await apiFetch(`/api/meetings/${meeting.id}/transcript`, {
+          method: 'POST',
+          body: JSON.stringify({ segments }),
+        })
+      }
+
+      // Step 3: Trigger processing (extended timeout for local LLM)
+      try {
+        await apiFetch(`/api/meetings/${meeting.id}/process`, {
+          method: 'POST',
+          timeoutMs: PROCESSING_TIMEOUT,
+        })
+      } catch (err: unknown) {
+        if (err instanceof DOMException && err.name === 'AbortError') {
+          throw new ApiClientError('Local AI processing exceeded the client timeout.', 504)
+        }
+        throw err
+      }
+
+      return ok(mapBackendMeeting(meeting, [], []))
+    } finally {
+      this._processingInFlight = false
+    }
+  },
+
+  async retryProcessing(meetingId: string): Promise<void> {
+    await apiFetch(`/api/meetings/${meetingId}/process`, { method: 'POST' })
   },
 
   // approve/reject not available in backend — return error so UI can handle gracefully

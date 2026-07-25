@@ -74,6 +74,8 @@ class MeetingResponse(BaseModel):
     duration_seconds: Optional[int] = None
     status: str
     summary: Optional[str] = None
+    processing_confidence: Optional[float] = None
+    transcript: Optional[Any] = None
     gcal_event_id: Optional[str] = None
     recording_url: Optional[str] = None
     created_by: uuid.UUID
@@ -82,6 +84,9 @@ class MeetingResponse(BaseModel):
     participants: list[Any] = []
     action_item_count: int = 0
     decision_count: int = 0
+    risk_count: int = 0
+    dependency_count: int = 0
+    clarification_count: int = 0
 
     model_config = {"from_attributes": True}
 
@@ -133,6 +138,8 @@ class ActionItemResponse(BaseModel):
     status: str
     risk_level: Optional[str] = None
     notes: Optional[str] = None
+    evidence: Optional[str] = None
+    confidence: float = 0.0
     created_at: datetime
     updated_at: datetime
 
@@ -155,9 +162,58 @@ class DecisionResponse(BaseModel):
     title: str
     description: Optional[str] = None
     made_by: Optional[uuid.UUID] = None
+    decided_by_name: Optional[str] = None
+    evidence: Optional[str] = None
     timestamp: datetime
     confidence: Optional[float] = None
     is_confirmed: bool
+
+    model_config = {"from_attributes": True}
+
+
+# ── Risk ─────────────────────────────────────────────────────────────────────
+
+class RiskResponse(BaseModel):
+    id: uuid.UUID
+    meeting_id: uuid.UUID
+    title: str
+    description: Optional[str] = None
+    severity: str
+    likelihood: str
+    mitigation: Optional[str] = None
+    owner: Optional[str] = None
+    evidence: Optional[str] = None
+    confidence: float = 0.0
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+# ── Dependency ──────────────────────────────────────────────────────────────
+
+class DependencyResponse(BaseModel):
+    id: uuid.UUID
+    meeting_id: uuid.UUID
+    from_item: str
+    to_item: str
+    dependency_type: str
+    description: Optional[str] = None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+# ── Clarification ──────────────────────────────────────────────────────────
+
+class ClarificationResponse(BaseModel):
+    id: uuid.UUID
+    meeting_id: uuid.UUID
+    question: str
+    context: Optional[str] = None
+    evidence: Optional[str] = None
+    status: str = "pending"
+    resolution: Optional[str] = None
+    created_at: datetime
 
     model_config = {"from_attributes": True}
 

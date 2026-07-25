@@ -21,6 +21,9 @@ class MeetingStatus(str, enum.Enum):
     scheduled = "scheduled"
     in_progress = "in_progress"
     completed = "completed"
+    processing = "processing"
+    awaiting_review = "awaiting_review"
+    failed = "failed"
 
 
 class Priority(str, enum.Enum):
@@ -85,6 +88,7 @@ class Meeting(Base):
     status = Column(Enum(MeetingStatus), default=MeetingStatus.scheduled, nullable=False)
     transcript = Column(JSON, nullable=True)
     summary = Column(Text, nullable=True)
+    processing_confidence = Column(Float, nullable=True)
     gcal_event_id = Column(String(255), nullable=True)
     recording_url = Column(Text, nullable=True)
     created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
@@ -95,6 +99,9 @@ class Meeting(Base):
     participants = relationship("Participant", back_populates="meeting", cascade="all, delete-orphan")
     action_items = relationship("ActionItem", back_populates="meeting", cascade="all, delete-orphan")
     decisions = relationship("Decision", back_populates="meeting", cascade="all, delete-orphan")
+    risks = relationship("Risk", back_populates="meeting", cascade="all, delete-orphan")
+    dependencies = relationship("Dependency", back_populates="meeting", cascade="all, delete-orphan")
+    clarifications = relationship("Clarification", back_populates="meeting", cascade="all, delete-orphan")
     agent_logs = relationship("AgentLog", back_populates="meeting", cascade="all, delete-orphan")
     workflow_states = relationship("WorkflowState", back_populates="meeting", cascade="all, delete-orphan")
 
@@ -129,6 +136,8 @@ class ActionItem(Base):
     status = Column(Enum(ItemStatus), default=ItemStatus.pending, nullable=False)
     risk_level = Column(String(50), nullable=True)
     notes = Column(Text, nullable=True)
+    evidence = Column(Text, nullable=True)
+    confidence = Column(Float, default=0.0, nullable=False)
     created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
     updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)
 
@@ -144,6 +153,8 @@ class Decision(Base):
     title = Column(String(500), nullable=False)
     description = Column(Text, nullable=True)
     made_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    decided_by_name = Column(String(255), nullable=True)
+    evidence = Column(Text, nullable=True)
     timestamp = Column(DateTime(timezone=True), default=utcnow, nullable=False)
     confidence = Column(Float, nullable=True)
     is_confirmed = Column(Boolean, default=False, nullable=False)
@@ -214,6 +225,66 @@ class OrganizationMemory(Base):
     source_type = Column(String(50), nullable=True)
     source_id = Column(String(255), nullable=True)
     created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
+class RiskSeverity(str, enum.Enum):
+    low = "low"
+    medium = "medium"
+    high = "high"
+    critical = "critical"
+
+
+class RiskLikelihood(str, enum.Enum):
+    low = "low"
+    medium = "medium"
+    high = "high"
+
+
+class Risk(Base):
+    __tablename__ = "risks"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
+    meeting_id = Column(UUID(as_uuid=True), ForeignKey("meetings.id"), nullable=False)
+    title = Column(String(500), nullable=False)
+    description = Column(Text, nullable=True)
+    severity = Column(Enum(RiskSeverity), default=RiskSeverity.medium, nullable=False)
+    likelihood = Column(Enum(RiskLikelihood), default=RiskLikelihood.medium, nullable=False)
+    mitigation = Column(Text, nullable=True)
+    owner = Column(String(255), nullable=True)
+    evidence = Column(Text, nullable=True)
+    confidence = Column(Float, default=0.0, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+    meeting = relationship("Meeting", back_populates="risks")
+
+
+class Dependency(Base):
+    __tablename__ = "dependencies"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
+    meeting_id = Column(UUID(as_uuid=True), ForeignKey("meetings.id"), nullable=False)
+    from_item = Column(String(500), nullable=False)
+    to_item = Column(String(500), nullable=False)
+    dependency_type = Column(String(50), default="blocks", nullable=False)
+    description = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+    meeting = relationship("Meeting", back_populates="dependencies")
+
+
+class Clarification(Base):
+    __tablename__ = "clarifications"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
+    meeting_id = Column(UUID(as_uuid=True), ForeignKey("meetings.id"), nullable=False)
+    question = Column(Text, nullable=False)
+    context = Column(Text, nullable=True)
+    evidence = Column(Text, nullable=True)
+    status = Column(String(50), default="pending", nullable=False)
+    resolution = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+    meeting = relationship("Meeting", back_populates="clarifications")
 
 
 class WorkflowState(Base):

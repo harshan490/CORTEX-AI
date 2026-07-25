@@ -26,5 +26,12 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 
 async def init_db():
     async with engine.begin() as conn:
-        from database.models import User, Meeting, Participant, ActionItem, Decision, Task, Reminder, AgentLog, OrganizationMemory, WorkflowState
+        from database.models import User, Meeting, Participant, ActionItem, Decision, Task, Reminder, AgentLog, OrganizationMemory, WorkflowState, Risk, Dependency, Clarification
+        # Add new enum values to existing PostgreSQL meetingstatus type
+        for val in ('processing', 'awaiting_review', 'failed'):
+            await conn.execute(
+                __import__('sqlalchemy').text(
+                    f"ALTER TYPE meetingstatus ADD VALUE IF NOT EXISTS '{val}'"
+                )
+            )
         await conn.run_sync(Base.metadata.create_all)
