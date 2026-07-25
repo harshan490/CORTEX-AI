@@ -294,8 +294,17 @@ class WorkflowState(Base):
     meeting_id = Column(UUID(as_uuid=True), ForeignKey("meetings.id"), nullable=False)
     current_step = Column(String(255), nullable=False)
     status = Column(String(50), nullable=False)
+    progress = Column(Integer, default=0, nullable=False)
     state_data = Column(JSON, nullable=True)
+    error = Column(Text, nullable=True)
+    attempt = Column(Integer, default=1, nullable=False)
+    started_at = Column(DateTime(timezone=True), nullable=True)
+    completed_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
     updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint('meeting_id', name='uq_workflow_states_meeting_id'),
+    )
 
     meeting = relationship("Meeting", back_populates="workflow_states")

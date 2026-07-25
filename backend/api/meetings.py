@@ -112,6 +112,15 @@ async def update_meeting_endpoint(
     if not kwargs:
         return _meeting_response(meeting)
     updated = await update_meeting(db, meeting_id, **kwargs)
+
+    # If meeting is being approved (status=completed), mark workflow as completed
+    if kwargs.get("status") == "completed" or kwargs.get("status") == MeetingStatus.completed:
+        try:
+            from services.workflow_tracker import mark_completed
+            await mark_completed(db, meeting_id)
+        except Exception:
+            pass  # Don't fail the meeting update if workflow update fails
+
     return _meeting_response(updated)
 
 
@@ -163,6 +172,10 @@ async def process_meeting_endpoint(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    from services.workflow_tracker import (
+        get_or_create_workflow, update_stage, mark_awaiting_review, mark_failed,
+    )
+
     meeting = await get_meeting(db, meeting_id)
     if not meeting:
         raise HTTPException(status_code=404, detail="Meeting not found")
@@ -173,6 +186,9 @@ async def process_meeting_endpoint(
     if not segments:
         raise HTTPException(status_code=400, detail="Cannot process meeting without transcript segments")
 
+    # Create or reset workflow (idempotent upsert keyed by meeting_id)
+    workflow = await get_or_create_workflow(db, meeting_id)
+
     # Set status to processing
     await update_meeting(db, meeting_id, status=MeetingStatus.processing)
 
@@ -180,16 +196,28 @@ async def process_meeting_endpoint(
                                   status="started", meeting_id=meeting_id)
 
     try:
+        # Stage: transcript_validation
+        await update_stage(db, workflow.id, "transcript_validation", 10)
+
         from services.llm import LLMService
         llm = LLMService()
+
+        # Stage: provider_health_check
+        await update_stage(db, workflow.id, "provider_health_check", 20)
 
         # Build transcript text for LLM
         full_text = "\n".join(
             f"{seg.get('speaker', 'Unknown')}: {seg.get('text', '')}" for seg in segments
         )
 
+        # Stage: intelligence_extraction
+        await update_stage(db, workflow.id, "intelligence_extraction", 30)
+
         # Single structured extraction call
         intel = await llm.extract_meeting_intelligence(full_text)
+
+        # Stage: result_validation
+        await update_stage(db, workflow.id, "result_validation", 70)
 
         # Delete existing extracted data for idempotency
         await db.execute(sql_delete(ActionItemModel).where(ActionItemModel.meeting_id == meeting_id))
@@ -199,6 +227,9 @@ async def process_meeting_endpoint(
         await db.execute(sql_delete(DependencyModel).where(DependencyModel.meeting_id == meeting_id))
         await db.execute(sql_delete(ClarificationModel).where(ClarificationModel.meeting_id == meeting_id))
         await db.flush()
+
+        # Stage: database_persistence
+        await update_stage(db, workflow.id, "database_persistence", 80)
 
         # Persist participants (deduplicated case-insensitively)
         seen_names = set()
@@ -282,6 +313,9 @@ async def process_meeting_endpoint(
             status=MeetingStatus.awaiting_review,
         )
 
+        # Stage: awaiting_review (terminal processing state)
+        await mark_awaiting_review(db, workflow.id)
+
         # Update agent log
         await db.execute(
             sql_update(AgentLog).where(AgentLog.id == log.id)
@@ -301,21 +335,23 @@ async def process_meeting_endpoint(
 
     except Exception as e:
         logger.exception(f"Processing failed for meeting {meeting_id}: {e}")
+        from services.llm import OllamaError
+        if isinstance(e, OllamaError):
+            safe_err = f"LLM processing failed: {e}"
+        else:
+            safe_err = "Meeting processing failed unexpectedly."
         try:
             await update_meeting(db, meeting_id, status=MeetingStatus.failed)
             await db.execute(
                 sql_update(AgentLog).where(AgentLog.id == log.id)
                 .values(status="failed", error=str(e), completed_at=datetime.now(timezone.utc))
             )
-            await db.flush()
+            await mark_failed(db, workflow.id, safe_err)
+            # Explicitly commit so failure state persists (get_db would rollback on exception)
+            await db.commit()
         except Exception:
             pass
-        # Return a safe error message without exposing prompts or raw model responses
-        from services.llm import OllamaError
-        if isinstance(e, OllamaError):
-            safe_msg = f"LLM processing failed: {e}"
-        else:
-            safe_msg = "Meeting processing failed. Check server logs for details."
+        safe_msg = safe_err if isinstance(e, OllamaError) else "Meeting processing failed. Check server logs for details."
         raise HTTPException(status_code=500, detail=safe_msg)
 
 

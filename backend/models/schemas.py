@@ -370,9 +370,15 @@ class AgentLogResponse(BaseModel):
 class WorkflowStateResponse(BaseModel):
     id: uuid.UUID
     meeting_id: uuid.UUID
+    meeting_title: Optional[str] = None
     current_step: str
     status: str
+    progress: int = 0
     state_data: Optional[Any] = None
+    error: Optional[str] = None
+    attempt: int = 1
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
 

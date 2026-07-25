@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useCallback } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import {
@@ -32,7 +32,7 @@ function formatAvgTime(ms: number): string {
 
 const containerVariants = {
   hidden: { opacity: 0 },
-  visible: { transition: { staggerChildren: 0.05 } },
+  visible: { opacity: 1, transition: { staggerChildren: 0.05 } },
 }
 
 const itemVariants = {
@@ -56,16 +56,22 @@ export default function WorkflowsPage() {
   const {
     data: metrics,
     isLoading: metricsLoading,
+    refetch: refetchMetrics,
   } = useQuery({
     queryKey: ['workflow-metrics'],
     queryFn: () => api.getWorkflowMetrics(),
   })
 
+  const handleRefresh = useCallback(() => {
+    refetch()
+    refetchMetrics()
+  }, [refetch, refetchMetrics])
+
   return (
     <DashboardLayout title="Workflows">
       <motion.div
         variants={containerVariants}
-        initial="hidden"
+        initial={false}
         animate="visible"
         className="space-y-6"
       >
@@ -85,7 +91,7 @@ export default function WorkflowsPage() {
               variant="secondary"
               size="sm"
               leftIcon={<RefreshCw className="h-4 w-4" />}
-              onClick={() => refetch()}
+              onClick={handleRefresh}
               loading={isLoading}
             >
               Refresh

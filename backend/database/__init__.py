@@ -35,3 +35,26 @@ async def init_db():
                 )
             )
         await conn.run_sync(Base.metadata.create_all)
+
+        # Non-destructive migration: add new columns to workflow_states if missing
+        import sqlalchemy as sa
+        for col_sql in [
+            "ALTER TABLE workflow_states ADD COLUMN IF NOT EXISTS progress INTEGER DEFAULT 0 NOT NULL",
+            "ALTER TABLE workflow_states ADD COLUMN IF NOT EXISTS error TEXT",
+            "ALTER TABLE workflow_states ADD COLUMN IF NOT EXISTS attempt INTEGER DEFAULT 1 NOT NULL",
+            "ALTER TABLE workflow_states ADD COLUMN IF NOT EXISTS started_at TIMESTAMPTZ",
+            "ALTER TABLE workflow_states ADD COLUMN IF NOT EXISTS completed_at TIMESTAMPTZ",
+        ]:
+            await conn.execute(sa.text(col_sql))
+
+        # Add unique constraint on meeting_id if not exists
+        await conn.execute(sa.text("""
+            DO $$ BEGIN
+                IF NOT EXISTS (
+                    SELECT 1 FROM pg_constraint WHERE conname = 'uq_workflow_states_meeting_id'
+                ) THEN
+                    ALTER TABLE workflow_states
+                    ADD CONSTRAINT uq_workflow_states_meeting_id UNIQUE (meeting_id);
+                END IF;
+            END $$;
+        """))

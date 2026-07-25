@@ -313,6 +313,7 @@ function mapWorkflowStatus(s: string): import('@/types/workflows').WorkflowStatu
   const map: Record<string, import('@/types/workflows').WorkflowStatus> = {
     queued: 'queued',
     processing: 'processing',
+    awaiting_review: 'awaiting_review',
     pending: 'awaiting_review',
     completed: 'completed',
     failed: 'failed',
@@ -839,41 +840,47 @@ export const apiClient = {
       params.set('status', filters.status)
     }
 
-    // Backend /api/agents/workflows returns workflow state objects
-    const data = await apiFetch<Array<{
+    interface BackendWorkflow {
       id: string
       meeting_id: string
-      agent_name?: string
+      meeting_title?: string | null
+      current_step: string
       status: string
-      started_at: string
-      completed_at?: string | null
-      result?: unknown
+      progress: number
       error?: string | null
-    }>>(`/api/agents/workflows?${params}`, { signal })
+      attempt: number
+      started_at?: string | null
+      completed_at?: string | null
+      created_at: string
+      updated_at: string
+    }
 
-    // Also fetch meetings to get titles
-    const meetingsData = await apiFetch<BackendMeeting[]>(`/api/meetings/?limit=200`, { signal })
-    const meetingMap = new Map(meetingsData.map((m) => [m.id, m]))
+    const data = await apiFetch<BackendWorkflow[]>(`/api/agents/workflows?${params}`, { signal })
+
+    const totalStages = 14
 
     const workflows: import('@/types/workflows').Workflow[] = data.map((wf) => {
-      const meeting = meetingMap.get(wf.meeting_id)
       const status = mapWorkflowStatus(wf.status)
+      const startedAt = wf.started_at ?? wf.created_at
+      const durationMs = wf.completed_at && wf.started_at
+        ? new Date(wf.completed_at).getTime() - new Date(wf.started_at).getTime()
+        : undefined
+      const completedStages = Math.round((wf.progress / 100) * totalStages)
+
       return {
         id: wf.id,
         meetingId: wf.meeting_id,
-        meetingTitle: meeting?.title ?? 'Unknown Meeting',
+        meetingTitle: wf.meeting_title ?? 'Unknown Meeting',
         status,
-        currentStage: wf.agent_name ?? 'Unknown',
-        progress: status === 'completed' ? 100 : status === 'failed' ? 0 : 50,
-        startedAt: wf.started_at,
-        updatedAt: wf.completed_at ?? wf.started_at,
-        durationMs: wf.completed_at
-          ? new Date(wf.completed_at).getTime() - new Date(wf.started_at).getTime()
-          : undefined,
-        retryCount: 0,
+        currentStage: wf.current_step,
+        progress: wf.progress,
+        startedAt,
+        updatedAt: wf.updated_at,
+        durationMs,
+        retryCount: Math.max(0, wf.attempt - 1),
         approvalStatus: status === 'awaiting_review' ? 'pending' as const : undefined,
-        completedStages: status === 'completed' ? 15 : 0,
-        totalStages: 15,
+        completedStages,
+        totalStages,
         stages: [],
       }
     })
@@ -884,16 +891,15 @@ export const apiClient = {
   async getWorkflowMetrics(
     signal?: AbortSignal
   ): Promise<ApiResponse<import('@/types/workflows').WorkflowMetrics>> {
-    // Derive metrics from workflow list
     const res = await this.listWorkflows(undefined, signal)
     const workflows = res.data
     const active = workflows.filter((w) => w.status === 'processing').length
     const awaiting = workflows.filter((w) => w.status === 'awaiting_review').length
     const completed = workflows.filter((w) => w.status === 'completed').length
     const failed = workflows.filter((w) => w.status === 'failed').length
-    const completedWithDuration = workflows.filter((w) => w.status === 'completed' && w.durationMs)
-    const avgMs = completedWithDuration.length > 0
-      ? completedWithDuration.reduce((s, w) => s + (w.durationMs ?? 0), 0) / completedWithDuration.length
+    const withDuration = workflows.filter((w) => w.durationMs && w.durationMs > 0)
+    const avgMs = withDuration.length > 0
+      ? withDuration.reduce((s, w) => s + (w.durationMs ?? 0), 0) / withDuration.length
       : 0
 
     return ok({ active, awaitingApproval: awaiting, completed, failed, avgProcessingTimeMs: avgMs })

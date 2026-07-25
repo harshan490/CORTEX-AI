@@ -2,11 +2,12 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
+from sqlalchemy.orm import selectinload
 from database import get_db
 from database.crud import get_agent_logs_by_meeting
 from api.dependencies import get_current_user
 from models.schemas import AgentStatusResponse, AgentLogResponse, WorkflowStateResponse
-from database.models import User, AgentLog, WorkflowState
+from database.models import User, AgentLog, WorkflowState, Meeting
 import uuid
 
 router = APIRouter(prefix="/api/agents", tags=["Agents"])
@@ -68,13 +69,24 @@ async def get_workflows(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    query = select(WorkflowState).order_by(WorkflowState.updated_at.desc())
+    query = (
+        select(WorkflowState)
+        .join(Meeting, WorkflowState.meeting_id == Meeting.id)
+        .where(Meeting.created_by == current_user.id)
+        .options(selectinload(WorkflowState.meeting))
+        .order_by(WorkflowState.updated_at.desc())
+    )
     if meeting_id:
         query = query.where(WorkflowState.meeting_id == meeting_id)
     if status:
         query = query.where(WorkflowState.status == status)
     rows = (await db.execute(query)).scalars().all()
-    return [WorkflowStateResponse.model_validate(r) for r in rows]
+    results = []
+    for r in rows:
+        resp = WorkflowStateResponse.model_validate(r)
+        resp.meeting_title = r.meeting.title if r.meeting else None
+        results.append(resp)
+    return results
 
 
 @router.get("/{name}", response_model=AgentStatusResponse)
