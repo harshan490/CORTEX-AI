@@ -263,6 +263,7 @@ interface BackendClarification {
 }
 
 interface BackendAnalyticsOverview {
+  period: string
   total_meetings: number
   total_tasks: number
   completed_tasks: number
@@ -272,6 +273,33 @@ interface BackendAnalyticsOverview {
   total_decisions: number
   overdue_items: number
   critical_risks: number
+  average_duration_minutes: number
+}
+
+interface BackendMeetingTrend {
+  date: string
+  count: number
+  total_duration_seconds: number
+}
+
+export interface AnalyticsOverview {
+  period: string
+  totalMeetings: number
+  totalTasks: number
+  completedTasks: number
+  completionRate: number
+  totalActionItems: number
+  completedActionItems: number
+  totalDecisions: number
+  overdueItems: number
+  criticalRisks: number
+  averageDurationMinutes: number
+}
+
+export interface MeetingTrendPoint {
+  date: string
+  count: number
+  totalDurationSeconds: number
 }
 
 // Map backend task status → frontend TaskStatus
@@ -555,6 +583,48 @@ export const apiClient = {
       averageConfidence: 0.82, // not available — use placeholder
       processingQueueSize: 0,
     })
+  },
+
+  // --- Analytics ---
+
+  async getAnalyticsOverview(
+    period: string = 'quarter',
+    signal?: AbortSignal
+  ): Promise<ApiResponse<AnalyticsOverview>> {
+    const overview = await apiFetch<BackendAnalyticsOverview>(
+      `/api/analytics/overview?period=${encodeURIComponent(period)}`,
+      { signal }
+    )
+    return ok({
+      period: overview.period,
+      totalMeetings: overview.total_meetings,
+      totalTasks: overview.total_tasks,
+      completedTasks: overview.completed_tasks,
+      completionRate: overview.completion_rate,
+      totalActionItems: overview.total_action_items,
+      completedActionItems: overview.completed_action_items,
+      totalDecisions: overview.total_decisions,
+      overdueItems: overview.overdue_items,
+      criticalRisks: overview.critical_risks,
+      averageDurationMinutes: overview.average_duration_minutes,
+    })
+  },
+
+  async getMeetingTrends(
+    period: string = 'quarter',
+    signal?: AbortSignal
+  ): Promise<ApiResponse<MeetingTrendPoint[]>> {
+    const data = await apiFetch<{ trends: BackendMeetingTrend[] }>(
+      `/api/analytics/meeting-trends?period=${encodeURIComponent(period)}`,
+      { signal }
+    )
+    return ok(
+      data.trends.map((t) => ({
+        date: t.date,
+        count: t.count,
+        totalDurationSeconds: t.total_duration_seconds,
+      }))
+    )
   },
 
   // --- Meetings ---

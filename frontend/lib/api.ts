@@ -88,6 +88,35 @@ export const api = {
     return res.data
   },
 
+  // --- Analytics ---
+
+  async getAnalyticsOverview(period: string = 'quarter') {
+    if (isDemoMode) {
+      // Demo mode: return static metrics regardless of period
+      return {
+        period,
+        totalMeetings: 2,
+        totalTasks: 4,
+        completedTasks: 1,
+        completionRate: 25,
+        totalActionItems: 6,
+        completedActionItems: 2,
+        totalDecisions: 3,
+        overdueItems: 0,
+        criticalRisks: 0,
+        averageDurationMinutes: 45,
+      }
+    }
+    const res = await apiClient.getAnalyticsOverview(period)
+    return res.data
+  },
+
+  async getMeetingTrends(period: string = 'quarter') {
+    if (isDemoMode) return []
+    const res = await apiClient.getMeetingTrends(period)
+    return res.data
+  },
+
   // --- Meetings ---
 
   async listMeetings(filters?: MeetingFilters): Promise<MeetingListResult> {

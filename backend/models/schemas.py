@@ -283,6 +283,7 @@ class ReminderResponse(BaseModel):
 # ── Analytics ────────────────────────────────────────────────────────────────
 
 class AnalyticsResponse(BaseModel):
+    period: str
     total_meetings: int
     total_tasks: int
     completed_tasks: int
@@ -292,6 +293,7 @@ class AnalyticsResponse(BaseModel):
     total_decisions: int
     overdue_items: int
     critical_risks: int
+    average_duration_minutes: float
 
 
 class ProductivityScore(BaseModel):
