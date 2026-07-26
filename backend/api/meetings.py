@@ -335,8 +335,8 @@ async def process_meeting_endpoint(
 
     except Exception as e:
         logger.exception(f"Processing failed for meeting {meeting_id}: {e}")
-        from services.llm import OllamaError
-        if isinstance(e, OllamaError):
+        from services.llm import OllamaError, CerebrasError
+        if isinstance(e, (OllamaError, CerebrasError)):
             safe_err = f"LLM processing failed: {e}"
         else:
             safe_err = "Meeting processing failed unexpectedly."
@@ -351,7 +351,7 @@ async def process_meeting_endpoint(
             await db.commit()
         except Exception:
             pass
-        safe_msg = safe_err if isinstance(e, OllamaError) else "Meeting processing failed. Check server logs for details."
+        safe_msg = safe_err if isinstance(e, (OllamaError, CerebrasError)) else "Meeting processing failed. Check server logs for details."
         raise HTTPException(status_code=500, detail=safe_msg)
 
 

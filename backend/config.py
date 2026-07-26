@@ -15,7 +15,11 @@ class Settings(BaseSettings):
     OPENAI_MODEL: str = "gpt-4o"
     OPENAI_STORE_RESPONSES: bool = False
 
-    LLM_PROVIDER: Literal["mock", "openai", "ollama"] = "mock"
+    CEREBRAS_API_KEY: str = ""
+    CEREBRAS_MODEL: str = "gemma-4-31b"
+    CEREBRAS_BASE_URL: str = "https://api.cerebras.ai/v1"
+
+    LLM_PROVIDER: Literal["mock", "openai", "ollama", "cerebras"] = "mock"
     LLM_MOCK_MODE: bool = True
     LLM_TIMEOUT_SECONDS: int = 60
     LLM_MAX_RETRIES: int = 2

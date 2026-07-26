@@ -211,6 +211,10 @@ class OllamaError(Exception):
     """Raised when the Ollama service cannot fulfil a request."""
 
 
+class CerebrasError(Exception):
+    """Raised when the Cerebras API cannot fulfil a request."""
+
+
 async def check_ollama_health(base_url: str, model: str) -> None:
     """Verify that Ollama is reachable and the required model is available.
 
@@ -263,6 +267,11 @@ class LLMService:
         self.ollama_base_url = settings.OLLAMA_BASE_URL.rstrip("/")
         self.ollama_model = settings.OLLAMA_MODEL
 
+        # Cerebras settings
+        self.cerebras_api_key = settings.CEREBRAS_API_KEY
+        self.cerebras_model = settings.CEREBRAS_MODEL
+        self.cerebras_base_url = settings.CEREBRAS_BASE_URL
+
         # Shared settings
         self.timeout = settings.LLM_TIMEOUT_SECONDS
         self.max_retries = settings.LLM_MAX_RETRIES
@@ -307,6 +316,8 @@ class LLMService:
             result = await self._call_ollama_structured(transcript_text)
         elif self.provider == "openai":
             result = await self._call_openai_structured(transcript_text)
+        elif self.provider == "cerebras":
+            result = await self._call_cerebras_structured(transcript_text)
         else:
             raise ValueError(f"Unknown LLM provider: {self.provider}")
 
@@ -385,6 +396,203 @@ class LLMService:
 
         # Should not reach here, but just in case
         raise last_error or OllamaError("Ollama extraction failed after retries")
+
+    async def _call_cerebras_structured(self, transcript_text: str) -> MeetingIntelligence:
+        """Call Cerebras OpenAI-compatible API with JSON mode."""
+        from services.llm_schemas import (
+            ExtractedParticipant, ExtractedDecision, ExtractedActionItem,
+            ExtractedRisk, ExtractedDependency, ExtractedClarification,
+        )
+
+        payload = {
+            "model": self.cerebras_model,
+            "messages": [
+                {"role": "system", "content": SYSTEM_PROMPT + "\n\nRespond with valid JSON containing: participants (list of {name, role}), decisions (list of {title, description, decided_by, evidence, confidence}), action_items (list of {title, description, assignee, deadline, priority, evidence, confidence}), risks (list of {title, description, severity, likelihood, owner, evidence, confidence}), dependencies (list of {from_item, to_item, dependency_type, description}), clarifications (list of {question, context, evidence}), summary (string), overall_confidence (float 0-1)."},
+                {"role": "user", "content": f"Analyze this meeting transcript:\n\n{transcript_text}"},
+            ],
+            "response_format": {"type": "json_object"},
+            "temperature": 0,
+            "max_completion_tokens": 8192,
+        }
+
+        url = f"{self.cerebras_base_url}/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {self.cerebras_api_key}",
+            "Content-Type": "application/json",
+        }
+
+        try:
+            timeout = httpx.Timeout(connect=10.0, read=float(self.timeout), write=10.0, pool=10.0)
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                resp = await client.post(url, json=payload, headers=headers)
+                resp.raise_for_status()
+        except httpx.ConnectError:
+            raise CerebrasError("Cerebras API is not reachable")
+        except httpx.TimeoutException:
+            raise CerebrasError(f"Cerebras request timed out after {self.timeout}s")
+        except httpx.HTTPStatusError as exc:
+            status_code = exc.response.status_code
+            if status_code == 401:
+                raise CerebrasError("Cerebras authentication failed (invalid API key)")
+            if status_code == 429:
+                raise CerebrasError("Cerebras rate limit exceeded")
+            raise CerebrasError(f"Cerebras API returned HTTP {status_code}")
+
+        try:
+            data = resp.json()
+        except (json.JSONDecodeError, ValueError):
+            raise CerebrasError("Cerebras returned invalid response")
+
+        content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+        if not content or not content.strip():
+            raise CerebrasError("Cerebras returned empty content")
+
+        try:
+            raw = json.loads(content)
+        except json.JSONDecodeError:
+            raise CerebrasError("Cerebras response is not valid JSON")
+
+        if not isinstance(raw, dict):
+            raise CerebrasError("Cerebras response is not a JSON object")
+
+        # Require at least summary or participants — reject structurally empty output
+        if not raw.get("summary") and not raw.get("participants"):
+            raise CerebrasError("Cerebras response missing required fields (summary and participants)")
+
+        # Normalize Cerebras output into MeetingIntelligence.
+        # Cerebras may return participants as strings or objects; other arrays
+        # may use variant key names.  Each normalizer rejects entries that
+        # cannot be mapped to the required fields.
+        def _norm_participant(p):
+            if isinstance(p, str):
+                if not p.strip():
+                    return None
+                return ExtractedParticipant(name=p.strip())
+            if isinstance(p, dict):
+                name = p.get("name", "").strip() if isinstance(p.get("name"), str) else ""
+                if not name:
+                    return None
+                return ExtractedParticipant(name=name, role=p.get("role"))
+            return None
+
+        def _norm_decision(d):
+            if isinstance(d, str):
+                if not d.strip():
+                    return None
+                return ExtractedDecision(title=d.strip())
+            if isinstance(d, dict):
+                title = d.get("title") or d.get("decision") or ""
+                if not isinstance(title, str) or not title.strip():
+                    return None
+                return ExtractedDecision(
+                    title=title.strip(),
+                    description=str(d.get("description", "")),
+                    decided_by=str(d.get("decided_by", d.get("owner", "Unknown"))),
+                    evidence=str(d.get("evidence", "")),
+                    confidence=min(1.0, max(0.0, float(d.get("confidence", 0.8)))),
+                )
+            return None
+
+        def _norm_action(a):
+            if isinstance(a, str):
+                if not a.strip():
+                    return None
+                return ExtractedActionItem(title=a.strip())
+            if isinstance(a, dict):
+                title = a.get("title") or a.get("task") or ""
+                if not isinstance(title, str) or not title.strip():
+                    return None
+                return ExtractedActionItem(
+                    title=title.strip(),
+                    description=str(a.get("description", a.get("task", ""))),
+                    assignee=a.get("assignee") or a.get("owner"),
+                    deadline=a.get("deadline"),
+                    priority=str(a.get("priority", "medium")),
+                    evidence=str(a.get("evidence", "")),
+                    confidence=min(1.0, max(0.0, float(a.get("confidence", 0.8)))),
+                )
+            return None
+
+        def _norm_risk(r):
+            if isinstance(r, str):
+                if not r.strip():
+                    return None
+                return ExtractedRisk(title=r.strip())
+            if isinstance(r, dict):
+                title = r.get("title") or r.get("risk") or ""
+                if not isinstance(title, str) or not title.strip():
+                    return None
+                return ExtractedRisk(
+                    title=title.strip(),
+                    description=str(r.get("description", "")),
+                    severity=str(r.get("severity", "medium")),
+                    likelihood=str(r.get("likelihood", "medium")),
+                    owner=r.get("owner"),
+                    evidence=str(r.get("evidence", "")),
+                    confidence=min(1.0, max(0.0, float(r.get("confidence", 0.8)))),
+                )
+            return None
+
+        def _norm_dep(d):
+            if isinstance(d, str):
+                if not d.strip():
+                    return None
+                return ExtractedDependency(from_item=d.strip(), to_item="(see context)")
+            if isinstance(d, dict):
+                from_item = d.get("from_item") or d.get("item") or ""
+                if not isinstance(from_item, str) or not from_item.strip():
+                    return None
+                return ExtractedDependency(
+                    from_item=from_item.strip(),
+                    to_item=str(d.get("to_item", "(see context)")),
+                    dependency_type=str(d.get("dependency_type", "blocks")),
+                    description=str(d.get("description", "")),
+                )
+            return None
+
+        def _norm_clar(c):
+            if isinstance(c, str):
+                if not c.strip():
+                    return None
+                return ExtractedClarification(question=c.strip())
+            if isinstance(c, dict):
+                question = c.get("question", "")
+                if not isinstance(question, str) or not question.strip():
+                    return None
+                return ExtractedClarification(
+                    question=question.strip(),
+                    context=str(c.get("context", "")),
+                    evidence=str(c.get("evidence", "")),
+                )
+            return None
+
+        def _filter_norm(normalizer, items):
+            """Apply normalizer and drop None results (items that couldn't be mapped)."""
+            if not isinstance(items, list):
+                return []
+            return [r for r in (normalizer(item) for item in items) if r is not None]
+
+        confidence = raw.get("overall_confidence", 0.8)
+        try:
+            confidence = min(1.0, max(0.0, float(confidence)))
+        except (TypeError, ValueError):
+            confidence = 0.8
+
+        result = MeetingIntelligence(
+            participants=_filter_norm(_norm_participant, raw.get("participants", [])),
+            decisions=_filter_norm(_norm_decision, raw.get("decisions", [])),
+            action_items=_filter_norm(_norm_action, raw.get("action_items", [])),
+            risks=_filter_norm(_norm_risk, raw.get("risks", [])),
+            dependencies=_filter_norm(_norm_dep, raw.get("dependencies", [])),
+            clarifications=_filter_norm(_norm_clar, raw.get("clarifications", [])),
+            summary=str(raw.get("summary", "")),
+            overall_confidence=confidence,
+        )
+
+        # Final schema validation — ensure the assembled object is valid
+        MeetingIntelligence.model_validate(result.model_dump())
+
+        return result
 
     async def _call_openai_structured(self, transcript_text: str) -> MeetingIntelligence:
         """Call OpenAI Responses API with strict structured outputs."""
