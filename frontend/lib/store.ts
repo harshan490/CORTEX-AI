@@ -8,6 +8,7 @@ interface AuthState {
   isAuthenticated: boolean
   login: (user: AuthUser, token: string) => void
   logout: () => void
+  setUser: (user: AuthUser) => void
 }
 
 interface UIState {
@@ -27,6 +28,7 @@ export const useStore = create<AppStore>()(
       isAuthenticated: false,
       login: (user, token) => set({ user, token, isAuthenticated: true }),
       logout: () => set({ user: null, token: null, isAuthenticated: false }),
+      setUser: (user) => set({ user }),
 
       sidebarOpen: true,
       theme: 'dark',

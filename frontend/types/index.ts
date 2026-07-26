@@ -45,6 +45,8 @@ export interface AuthUser {
   id: string
   email: string
   name: string
+  role?: string | null
+  timezone?: string | null
   avatar_url?: string | null
   is_active: boolean
   created_at: string

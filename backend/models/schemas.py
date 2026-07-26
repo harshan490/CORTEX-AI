@@ -17,8 +17,9 @@ class UserResponse(BaseModel):
     id: uuid.UUID
     email: str
     name: str
+    role: Optional[str] = None
+    timezone: Optional[str] = None
     avatar_url: Optional[str] = None
-    google_id: Optional[str] = None
     is_active: bool
     created_at: datetime
     updated_at: datetime
@@ -27,7 +28,9 @@ class UserResponse(BaseModel):
 
 
 class UserUpdate(BaseModel):
-    name: Optional[str] = Field(None, max_length=255)
+    name: Optional[str] = Field(None, min_length=1, max_length=255)
+    role: Optional[str] = Field(None, max_length=255)
+    timezone: Optional[str] = Field(None, max_length=100)
     avatar_url: Optional[str] = None
 
 

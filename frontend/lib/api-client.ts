@@ -569,6 +569,18 @@ export const apiClient = {
     return ok(data)
   },
 
+  async updateProfile(updates: {
+    name?: string
+    role?: string
+    timezone?: string
+  }): Promise<ApiResponse<AuthUser>> {
+    const data = await apiFetch<AuthUser>('/api/auth/me', {
+      method: 'PUT',
+      body: JSON.stringify(updates),
+    })
+    return ok(data)
+  },
+
   // --- Dashboard ---
 
   async getDashboardMetrics(signal?: AbortSignal): Promise<ApiResponse<DashboardMetrics>> {

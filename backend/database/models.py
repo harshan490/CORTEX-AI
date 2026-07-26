@@ -66,6 +66,8 @@ class User(Base):
     name = Column(String(255), nullable=False)
     avatar_url = Column(Text, nullable=True)
     google_id = Column(String(255), unique=True, nullable=True)
+    role = Column(String(255), nullable=True)
+    timezone = Column(String(100), nullable=True)
     hashed_password = Column(String(255), nullable=True)
     is_active = Column(Boolean, default=True, nullable=False)
     created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)

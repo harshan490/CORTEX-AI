@@ -74,6 +74,19 @@ export const api = {
     return res.data
   },
 
+  async updateProfile(updates: {
+    name?: string
+    role?: string
+    timezone?: string
+  }): Promise<AuthUser> {
+    if (isDemoMode) {
+      const user = await demoProvider.getMe()
+      return { ...user, ...updates }
+    }
+    const res = await apiClient.updateProfile(updates)
+    return res.data
+  },
+
   async healthCheck(): Promise<{ status: string; demo: boolean }> {
     if (isDemoMode) return demoProvider.healthCheck()
     const ok = await apiClient.healthCheck()

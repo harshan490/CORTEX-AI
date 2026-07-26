@@ -36,8 +36,15 @@ async def init_db():
             )
         await conn.run_sync(Base.metadata.create_all)
 
-        # Non-destructive migration: add new columns to workflow_states if missing
+        # Non-destructive migration: add new columns to users if missing
         import sqlalchemy as sa
+        for col_sql in [
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS role VARCHAR(255)",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS timezone VARCHAR(100)",
+        ]:
+            await conn.execute(sa.text(col_sql))
+
+        # Non-destructive migration: add new columns to workflow_states if missing
         for col_sql in [
             "ALTER TABLE workflow_states ADD COLUMN IF NOT EXISTS progress INTEGER DEFAULT 0 NOT NULL",
             "ALTER TABLE workflow_states ADD COLUMN IF NOT EXISTS error TEXT",

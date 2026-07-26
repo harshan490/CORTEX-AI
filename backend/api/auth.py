@@ -101,5 +101,20 @@ async def update_me(
     kwargs = {k: v for k, v in update.model_dump(exclude_unset=True).items() if v is not None}
     if not kwargs:
         return UserResponse.model_validate(current_user)
+    # Trim name
+    if "name" in kwargs:
+        kwargs["name"] = kwargs["name"].strip()
+        if not kwargs["name"]:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Name cannot be empty")
+    # Validate timezone
+    if "timezone" in kwargs:
+        import zoneinfo
+        try:
+            zoneinfo.ZoneInfo(kwargs["timezone"])
+        except (zoneinfo.ZoneInfoNotFoundError, KeyError):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Invalid timezone: {kwargs['timezone']}"
+            )
     user = await update_user(db, current_user.id, **kwargs)
     return UserResponse.model_validate(user)
