@@ -27,12 +27,16 @@ import type { HistoryFilters, HistoryViewMode, HistorySortOrder } from '@/types/
 
 function getInitialViewMode(): HistoryViewMode {
   if (typeof window === 'undefined') return 'timeline'
-  return (localStorage.getItem('cortex-history-view') as HistoryViewMode) ?? 'timeline'
+  try {
+    return (localStorage.getItem('cortex-history-view') as HistoryViewMode) ?? 'timeline'
+  } catch {
+    return 'timeline'
+  }
 }
 
 const containerVariants = {
   hidden: { opacity: 0 },
-  visible: { transition: { staggerChildren: 0.05 } },
+  visible: { opacity: 1, transition: { staggerChildren: 0.05 } },
 }
 
 const itemVariants = {
