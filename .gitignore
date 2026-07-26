@@ -22,3 +22,4 @@ alembic/versions/
 
 # TypeScript incremental build cache
 *.tsbuildinfo
+backend/.venv312/
