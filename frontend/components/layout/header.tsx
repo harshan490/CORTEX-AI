@@ -93,8 +93,8 @@ export function Header({ title, className }: HeaderProps) {
   return (
     <header
       className={cn(
-        'sticky top-0 z-30 flex h-16 items-center justify-between px-6',
-        'border-b border-white/10 bg-cortex-darker/70 backdrop-blur-2xl',
+        'sticky top-0 z-40 isolate flex h-16 items-center justify-between px-6',
+        'border-b border-white/10 bg-[#050507]/95 backdrop-blur-2xl',
         className
       )}
     >
@@ -149,7 +149,7 @@ export function Header({ title, className }: HeaderProps) {
               initial={{ opacity: 0, y: -8, scale: 0.95 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               transition={{ duration: 0.15 }}
-              className="absolute right-0 top-full mt-2 z-50 w-80 max-w-[calc(100vw-2rem)] rounded-xl border border-white/10 bg-cortex-darker p-1 shadow-2xl"
+              className="absolute right-0 top-full mt-2 z-[9999] w-80 max-w-[calc(100vw-2rem)] rounded-xl border border-white/15 bg-[#0D0B22] p-1 shadow-2xl ring-1 ring-black/20"
               role="menu"
             >
               <div className="px-3 py-2 border-b border-white/10">
@@ -197,7 +197,7 @@ export function Header({ title, className }: HeaderProps) {
                 initial={{ opacity: 0, y: -8, scale: 0.95 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 transition={{ duration: 0.15 }}
-                className="absolute right-0 top-full mt-2 z-50 w-56 max-w-[calc(100vw-2rem)] rounded-xl border border-white/10 bg-cortex-darker p-2 shadow-2xl"
+                className="absolute right-0 top-full mt-2 z-[9999] w-56 max-w-[calc(100vw-2rem)] rounded-xl border border-white/15 bg-[#0D0B22] p-2 shadow-2xl ring-1 ring-black/20"
                 role="menu"
               >
                 <div className="px-3 py-2 border-b border-white/10">

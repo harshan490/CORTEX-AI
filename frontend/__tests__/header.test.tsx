@@ -54,6 +54,15 @@ vi.mock('@/lib/store', () => ({
 }))
 
 // ---------------------------------------------------------------------------
+// Constants — the opaque background hex used by dropdown panels
+// ---------------------------------------------------------------------------
+
+// The dropdown uses bg-[#0D0B22] — a fully opaque Tailwind arbitrary value
+// matching the Cortex background.tertiary token.
+const OPAQUE_BG_CLASS = 'bg-[#0D0B22]'
+const STACKING_CLASS = 'z-[9999]'
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
@@ -86,17 +95,37 @@ describe('Header', () => {
     expect(screen.getByRole('menu')).toBeInTheDocument()
   })
 
-  // 2. Profile menu has a solid (opaque) background class
-  it('profile menu has an opaque background', () => {
+  // 2. Profile dropdown uses a fully opaque background class
+  it('profile menu uses fully opaque background', () => {
     renderHeader()
     openUserMenu()
     const menu = screen.getByRole('menu')
-    expect(menu.className).toContain('bg-cortex-darker')
-    // Must NOT contain alpha transparency suffix like /95 or /70
-    expect(menu.className).not.toMatch(/bg-cortex-darker\/\d/)
+    expect(menu.className).toContain(OPAQUE_BG_CLASS)
+    // Must NOT use the phantom cortex-darker token
+    expect(menu.className).not.toContain('bg-cortex-dark')
+    // Must NOT use backdrop-blur as sole background strategy
+    expect(menu.className).not.toContain('backdrop-blur')
   })
 
-  // 3. Profile action navigates to /settings#profile
+  // 3. Profile dropdown has the expected stacking class
+  it('profile menu has high z-index stacking class', () => {
+    renderHeader()
+    openUserMenu()
+    const menu = screen.getByRole('menu')
+    expect(menu.className).toContain(STACKING_CLASS)
+  })
+
+  // 4. Notification dropdown uses the same panel treatment
+  it('notification panel uses same opaque background and stacking', () => {
+    renderHeader()
+    openNotifications()
+    const panel = screen.getByRole('menu')
+    expect(panel.className).toContain(OPAQUE_BG_CLASS)
+    expect(panel.className).toContain(STACKING_CLASS)
+    expect(panel.className).not.toContain('bg-cortex-dark')
+  })
+
+  // 5. Profile action navigates to /settings#profile
   it('Profile navigates to /settings#profile', () => {
     renderHeader()
     openUserMenu()
@@ -104,7 +133,7 @@ describe('Header', () => {
     expect(pushMock).toHaveBeenCalledWith('/settings#profile')
   })
 
-  // 4. Preferences action navigates to /settings#appearance
+  // 6. Preferences action navigates to /settings#appearance
   it('Preferences navigates to /settings#appearance', () => {
     renderHeader()
     openUserMenu()
@@ -112,7 +141,7 @@ describe('Header', () => {
     expect(pushMock).toHaveBeenCalledWith('/settings#appearance')
   })
 
-  // 5. Sign out invokes logout and navigates to /auth
+  // 7. Sign out invokes logout and navigates to /auth
   it('Sign out invokes logout and navigates to /auth', () => {
     renderHeader()
     openUserMenu()
@@ -121,7 +150,7 @@ describe('Header', () => {
     expect(pushMock).toHaveBeenCalledWith('/auth')
   })
 
-  // 6. Outside click closes the menu
+  // 8. Outside click closes the menu
   it('closes user menu on outside click', () => {
     renderHeader()
     openUserMenu()
@@ -130,14 +159,14 @@ describe('Header', () => {
     expect(screen.queryByRole('menu')).not.toBeInTheDocument()
   })
 
-  // 7. Notification panel opens
+  // 9. Notification panel opens
   it('opens the notification panel on bell click', () => {
     renderHeader()
     openNotifications()
     expect(screen.getByText('Notifications')).toBeInTheDocument()
   })
 
-  // 8. Empty notification state renders
+  // 10. Empty notification state renders
   it('shows empty state when no notifications', () => {
     renderHeader()
     openNotifications()
@@ -145,7 +174,7 @@ describe('Header', () => {
     expect(screen.getByText('No new notifications')).toBeInTheDocument()
   })
 
-  // 9. Escape closes the active popover
+  // 11. Escape closes the active popover
   it('closes popover on Escape key', () => {
     renderHeader()
     openUserMenu()
@@ -154,19 +183,17 @@ describe('Header', () => {
     expect(screen.queryByRole('menu')).not.toBeInTheDocument()
   })
 
-  // 10. Opening one popover closes the other
+  // 12. Opening one popover closes the other
   it('opening notifications closes user menu', () => {
     renderHeader()
     openUserMenu()
-    // Verify user menu is open via menuitem
     expect(screen.getByRole('menuitem', { name: /sign out/i })).toBeInTheDocument()
     openNotifications()
-    // User menu should be gone, notification panel should be visible
     expect(screen.queryByRole('menuitem', { name: /sign out/i })).not.toBeInTheDocument()
     expect(screen.getByText('No new notifications')).toBeInTheDocument()
   })
 
-  // Accessibility: aria-expanded toggles
+  // 13. Accessibility: aria-expanded toggles
   it('sets aria-expanded correctly on toggle buttons', () => {
     renderHeader()
     const bellButton = screen.getByLabelText('Notifications')
@@ -178,7 +205,7 @@ describe('Header', () => {
     expect(bellButton).toHaveAttribute('aria-expanded', 'false')
   })
 
-  // No fake notification badge
+  // 14. No fake notification badge
   it('does not show a notification badge when there are no notifications', () => {
     renderHeader()
     const bellButton = screen.getByLabelText('Notifications')

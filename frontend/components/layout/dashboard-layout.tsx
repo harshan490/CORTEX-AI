@@ -27,7 +27,7 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
       >
         <Header title={title} />
 
-        <main className="flex-1 overflow-y-auto p-6">
+        <main className="relative z-0 flex-1 overflow-y-auto p-6">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
